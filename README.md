@@ -59,7 +59,7 @@
   - If we found ourself has circular references between applications, it is a sign to merge them. 
 
 ## Deployment 
-
+- All operations are done in the root of umbrella project by default.
 - Prepare Phoenix application for production  
   
   In the root of umbrella project: 
@@ -93,6 +93,58 @@
     ```sh
     PORT=4001 MIX_ENV=prod mix phx.server
     ```
+
+- Release 
+  - What is a release  \
+    Releases allow developers to precompile and package all of their code and the runtime into a single unit.  
+
+  - How to build a release \ 
+    - For umbrella project, we need to specify the releases in `mix.exs`
+      ```elixir 
+      releases: [
+        workflow_umbrella: [
+          include_executables_for: [:unix],
+          applications: [
+            workflow: :permanent,
+            workflow_web: :permanent,
+            playground: :permanent
+          ]
+        ]
+      ]
+      ```
+    - Run release 
+      ```
+      MIX_ENV=prod mix release
+      * assembling workflow_umbrella-0.1.0 on MIX_ENV=prod
+      * using config/runtime.exs to configure the release at runtime
+
+      Release created at _build/prod/rel/workflow_umbrella
+
+          # To start your system
+          _build/prod/rel/workflow_umbrella/bin/workflow_umbrella start
+
+      Once the release is running:
+
+          # To connect to it remotely
+          _build/prod/rel/workflow_umbrella/bin/workflow_umbrella remote
+
+          # To stop it gracefully (you may also send SIGINT/SIGTERM)
+          _build/prod/rel/workflow_umbrella/bin/workflow_umbrella stop
+
+      To list all commands:
+
+          _build/prod/rel/workflow_umbrella/bin/workflow_umbrella
+      ```
+
+  - Make sure to uncomment the line in `config/runtime.exs`
+    ```
+    config :workflow_web, WorkflowWeb.Endpoint, server: true
+    ```
+
+## Dockefile 
+  - In umbrella project, we couldn't run `mix phx.gen.release --docker` to generate Dockerfile for us. 
+    - Run `mix phx.gen.release --docker` in `apps/workflow_web` will generate files for `apps/workflow_web`.
+    - We could use it as example. So, move the generated `Dockerfile` and `.dockerignore` into umbrella project root and modify them.
 
 ## References 
 
