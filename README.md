@@ -145,6 +145,38 @@
   - In umbrella project, we couldn't run `mix phx.gen.release --docker` to generate Dockerfile for us. 
     - Run `mix phx.gen.release --docker` in `apps/workflow_web` will generate files for `apps/workflow_web`.
     - We could use it as example. So, move the generated `Dockerfile` and `.dockerignore` into umbrella project root and modify them.
+  - In the root of project, run `docker build -t app-test-001 .` to build and tag the image. 
+  - Test the image by 
+    ```sh 
+    docker run app-test-001
+    Usage: workflow_umbrella COMMAND [ARGS]
+
+    The known commands are:
+
+    start          Starts the system
+    start_iex      Starts the system with IEx attached
+    daemon         Starts the system as a daemon
+    daemon_iex     Starts the system as a daemon with IEx attached
+    eval "EXPR"    Executes the given expression on a new, non-booted system
+    rpc "EXPR"     Executes the given expression remotely on the running system
+    remote         Connects to the running system via a remote shell
+    restart        Restarts the running system via a remote command
+    stop           Stops the running system via a remote command
+    pid            Prints the operating system PID of the running system via a remote command
+    version        Prints the release name and version to be booted
+    ```
+
+    So, start it as 
+    ```
+    docker run app-test-001 start
+    ERROR! Config provider Config.Reader failed with:
+    ** (RuntimeError) environment variable DATABASE_URL is missing.
+    For example: ecto://USER:PASS@HOST/DATABASE
+    ...
+    ```
+
+    The error is a good things which shows us we started our release. Now, we need to solve the problem: `environment variable DATABASE_URL is missing`. 
+
 
 ## References 
 
@@ -156,7 +188,9 @@
 - About docerize Phoenix application 
   - [Use docker-compose to build multiple web apps with Elixir thanks to umbrella](https://medium.com/@cedric_paumard/how-to-build-multiple-web-apps-with-elixir-thanks-to-umbrella-part-2-set-up-the-project-800d6d731dbd)
   - [Containerizing a Phoenix 1.6 Umbrella Project](https://medium.com/@alistairisrael/containerizing-a-phoenix-1-6-umbrella-project-8ec03651a59c)
-
+  - [Working with Elixir Releases and performing CI/CD in containers](https://geeks.wego.com/elixir-releases-ci-cd-in-containers/)
+  - [Release a Phoenix application with docker and Postgres](https://medium.com/@j.schlacher_32979/release-a-phoenix-application-with-docker-and-postgres-28c6ae8c7184)
+  - [Containerizing an Elixir/Phoenix (Live View) Application with Docker](https://erikknaake.medium.com/dockerizing-elixir-phoenix-2aaf56209b9f)
 - About deployment 
   - [Introduction to Deployment](https://hexdocs.pm/phoenix/deployment.html)
   - [UMBRELLA APPS ON FLY.IO](https://suranyami.com/umbrella-apps-on-fly-io)
