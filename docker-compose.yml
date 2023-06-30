@@ -3,7 +3,7 @@ services:
   postgres:
     image: postgres:15.3
     ports:
-      - 5432:5432
+      - "5432:5432"
     environment:
       POSTGRES_USER: ${PSQL_USER}
       POSTGRES_PASSWORD: ${PSQL_PWD}
@@ -12,7 +12,7 @@ services:
   elixir:
     build: .
     ports:
-      - 4000:4000
+      - "4000:4000"
     depends_on:
       - postgres
     environment:
