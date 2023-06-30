@@ -1,6 +1,6 @@
 # Workflow.Umbrella
 
-## Notes 
+## Phoenix Umbrella
 
 - Project is initialized by 
   
@@ -175,8 +175,156 @@
     ...
     ```
 
-    The error is a good things which shows us we started our release. Now, we need to solve the problem: `environment variable DATABASE_URL is missing`. 
+    The error is a good things which shows us we started our release. Now, we need to solve the problem: `environment variable DATABASE_URL is missing`.  We will setup Postgres server for our Phoenix container using docker-compose. 
 
+## Docker-compose 
+
+Why need docker-compose? 
+- Docker-compose is a tool for defining and running multi-container Docker applications.
+- We’ll be needing a PostgreSQL server to run our Phoenix app. Docker Compose makes dealing with service dependencies a breeze. 
+
+Create `docker-compose.yml` file in the umbrella project root:
+```yml 
+version: "3"
+services:
+  postgres:
+    image: postgres:14.1
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: workflow_dev
+```
+Notice: the `workflow_dev` should match the name defined in `config/dev.exs` in umbrella project.
+
+
+Run the service by `docker compose up -d` in project root \ 
+If we run `docker network ls`, we shall see the following 
+```sh 
+NETWORK ID     NAME                        DRIVER    SCOPE
+108eb968d273   workflow_umbrella_default   bridge    local
+...
+```
+This is important. This shows the Docker internal network that Docker Compose used to run Postgres. The network name is `workflow_umbrella_default`.  
+
+- While Postgres should be listening on localhost relative to our workstation, within Docker, a container by default can’t just refer to the localhost of the host.
+- We need to run our container as part of the same Docker internal network that Docker Compose used to run Postgres.
+
+Get the name of our Postgres server by: 
+```sh 
+docker ps
+CONTAINER ID   IMAGE           COMMAND                  CREATED          STATUS          PORTS                    NAMES
+c16063149a5f   postgres:14.1   "docker-entrypoint.s…"   11 minutes ago   Up 11 minutes   0.0.0.0:5432->5432/tcp   workflow_umbrella-postgres-1
+```
+
+So, the our Postgres server's hostname is: `workflow_umbrella-postgres-1`.\
+Using the default credentials (and the development database), set the complete DATABASE_URL: 
+
+```
+export DATABASE_URL=ecto://postgres:postgres@workflow_umbrella-postgres-1/workflow_dev
+```
+
+- The `workflow_dev` is the DB name from `POSTGRES_DB` environment variable. It should match the name defined in `config/dev.exs` in umbrella project.
+
+## SECRET_KEY_BASE
+One last thing before run Phoenix docker is to set `SECRET_KEY_BASE`.
+
+- It is used by Phoenix to sign/encrypt cookies and other secrets. In development, it’s generated at project creation and hard-coded in config/dev.exs.
+- All we need to do is supply some value, at least 64 bytes long, encoded as Base64. 
+- Since we already have Elixir, we can use it generate a suitably encoded random value:
+  
+  ```sh 
+  export SECRET_KEY_BASE=$(elixir --eval 'IO.puts(:crypto.strong_rand_bytes(64) |> Base.encode64(padding: false))')
+  ```
+
+## Hello, Phoenix from Docker!
+
+```
+ docker run -p 4000:4000 --net workflow_umbrella_default -e DATABASE_URL=$DATABASE_URL -e SECRET_KEY_BASE=$SECRET_KEY_BASE app-test-001 start
+```
+
+Now visit, `http://localhost:4000`. It should show the Phoenix page!
+
+## Build multiple services in Docker-compose 
+Other people's example: 
+```yml 
+# the version of docker compose we use
+version: '2'
+
+services:
+    # the first container will be called postgres
+    postgres:
+        # the image is the last official postgres image
+        image: postgres
+        # the volumes allow us to have a shared space between our computer and the docker vm
+        volumes:
+            - "./.data/postgres:/var/lib/postgresql"
+         # set up environment variable for the postgres instance
+        environment:
+            POSTGRES_USER: ${PSQL_USER}
+            POSTGRES_PASSWORD: ${PSQL_PWD}
+            POOL: 100
+        # the port to listen
+        ports:
+            - "5432:5432"
+    # the second container is called redis
+    redis:
+        # the image is the last official redis image of the version 5
+        image: redis:5
+        ports:
+            - "6379:6379"
+        volumes:
+            - ./.data/redis:/var/lib/redis
+        # set up environment variable for the redis instance 
+        environment:
+            REDIS_PASSWORD: ${REDIS_PWD}
+    # our last container is called elixir
+    elixir:
+        # build use a path to a Dockerfile
+        build: .
+        # we set multiple ports as each of our application (but database) will use a different port
+        ports:
+            - "4001:4001"
+            - "4002:4002"
+            - "4003:4003"
+            - "4004:4004"
+            - "4101:4101"
+            - "4102:4102"
+            - "4103:4103"
+            - "4104:4104"
+        # we share the entire app with the container, but the libs
+        volumes:
+            - ".:/app"
+            - "/app/deps"
+            - "/app/apps/admin/assets/node_modules"
+        # the container will not start if the postgres container isn't running
+        depends_on:
+            - postgres
+        # set up environment variable for the phoenix instance 
+        environment:
+            POSTGRES_USER: ${PSQL_USER}
+            POSTGRES_PASSWORD: ${PSQL_PWD}
+            POSTGRES_DB_TEST: ${PSQL_DB_TEST}
+            POSTGRES_DB_DEV: ${PSQL_DB}
+            POSTGRES_HOST: ${PSQL_HOST}
+```
+
+[To set environment variables in docker-compose](https://docs.docker.com/compose/environment-variables/set-environment-variables/): 
+- Create `.env` file in the project root. 
+- Set up variables as 
+  ```text
+  # PostgreSQL
+  PSQL_HOST=postgres
+  PSQL_PORT=5432
+  PSQL_DB=test_dev
+  PSQL_DB_TEST=test_test # really inspired
+  PSQL_USER=user
+  PSQL_PWD=password
+
+  # Redis
+  REDIS_PWD=password
+  ```
 
 ## References 
 
