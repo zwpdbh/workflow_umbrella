@@ -1,0 +1,20 @@
+version: "3"
+services:
+  postgres:
+    image: postgres:15.3
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_USER: ${PSQL_USER}
+      POSTGRES_PASSWORD: ${PSQL_PWD}
+      POSTGRES_DB: workflow_dev
+
+  elixir:
+    build: .
+    ports:
+      - 4000:4000
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: ecto://${PSQL_USER}:${PSQL_PWD}@workflow_umbrella-postgres-1/${PSQL_DB}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
