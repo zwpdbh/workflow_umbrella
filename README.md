@@ -271,84 +271,65 @@ Now visit, `http://localhost:4000`. It should show the Phoenix page!
 Other people's example:
 
 ```yml
-# the version of docker compose we use
-version: "2"
-
+version: "3"
 services:
-  # the first container will be called postgres
   postgres:
-    # the image is the last official postgres image
-    image: postgres
-    # the volumes allow us to have a shared space between our computer and the docker vm
-    volumes:
-      - "./.data/postgres:/var/lib/postgresql"
-      # set up environment variable for the postgres instance
+    image: postgres:15.3
+    ports:
+      - 5432:5432
     environment:
       POSTGRES_USER: ${PSQL_USER}
       POSTGRES_PASSWORD: ${PSQL_PWD}
-      POOL: 100
-    # the port to listen
+      POSTGRES_DB: workflow_dev
+
+  phoenix_umbrella:
+    image: workflow:latest
+    command: start
     ports:
-      - "5432:5432"
-  # the second container is called redis
-  redis:
-    # the image is the last official redis image of the version 5
-    image: redis:5
-    ports:
-      - "6379:6379"
-    volumes:
-      - ./.data/redis:/var/lib/redis
-    # set up environment variable for the redis instance
-    environment:
-      REDIS_PASSWORD: ${REDIS_PWD}
-  # our last container is called elixir
-  elixir:
-    # build use a path to a Dockerfile
-    build: .
-    # we set multiple ports as each of our application (but database) will use a different port
-    ports:
-      - "4001:4001"
-      - "4002:4002"
-      - "4003:4003"
-      - "4004:4004"
-      - "4101:4101"
-      - "4102:4102"
-      - "4103:4103"
-      - "4104:4104"
-    # we share the entire app with the container, but the libs
-    volumes:
-      - ".:/app"
-      - "/app/deps"
-      - "/app/apps/admin/assets/node_modules"
-    # the container will not start if the postgres container isn't running
+      - 4000:4000
     depends_on:
       - postgres
-    # set up environment variable for the phoenix instance
     environment:
-      POSTGRES_USER: ${PSQL_USER}
-      POSTGRES_PASSWORD: ${PSQL_PWD}
-      POSTGRES_DB_TEST: ${PSQL_DB_TEST}
-      POSTGRES_DB_DEV: ${PSQL_DB}
-      POSTGRES_HOST: ${PSQL_HOST}
+      DATABASE_URL: ecto://${PSQL_USER}:${PSQL_PWD}@workflow_umbrella-postgres-1/${PSQL_DB}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
 ```
+
+- `command` specifies the command we use when start `image: workflow:latest`.
 
 [To set environment variables in docker-compose](https://docs.docker.com/compose/environment-variables/set-environment-variables/):
 
 - Create `.env` file in the project root.
 - Set up variables as
 
-  ```text
+  ```sh
   # PostgreSQL
   PSQL_HOST=postgres
   PSQL_PORT=5432
-  PSQL_DB=test_dev
-  PSQL_DB_TEST=test_test # really inspired
-  PSQL_USER=user
-  PSQL_PWD=password
+  PSQL_DB=workflow_dev
+  PSQL_DB_TEST=workflow_dev_test
+  PSQL_USER=postgres
+  PSQL_PWD=postgres
 
-  # Redis
-  REDIS_PWD=password
+  # Phoenix
+  SECRET_KEY_BASE=ZosPgTSLY4GPoNLayzHJRbwldxccUlY3o7DsvrmTXWCv9QxhGyKFp7fT9fvReUeQwNo9qR8BXEMmsqvgrOak/A
   ```
+
+Test it by:
+
+```sh
+# First remove any previously run instance
+docker compose rm
+# Start service-stack
+docker compose up
+```
+
+## Useful docker commands
+
+```
+docker kill $(docker ps -q)
+docker rm $(docker ps -a -q)
+docker rmi $(docker images -q)
+```
 
 ## References
 

@@ -98,5 +98,4 @@ ENV MIX_ENV="prod"
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/workflow_umbrella ./
 
 USER nobody
-
 ENTRYPOINT ["/app/bin/workflow_umbrella"]
