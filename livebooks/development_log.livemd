@@ -1,0 +1,119 @@
+# Development Log
+
+## Introduction
+
+This livebook is used to records down the development progress of workflow-stack project.
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 1. Postgresql for local development
+
+For local dev, this app need postgresql. \
+We will use postgresql from docker container for best practise.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Adding docker to project
+
+In the main directory of our project create a file called `docker-compose.yml` and fill it with the below details:
+
+```yaml
+version: "3.2"
+services:
+  postgres:
+    image: postgres:latest
+    restart: always
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: workflow_dev
+    volumes:
+      - ../postgres-data:/var/lib/postgresql/data
+```
+
+We can now start the service using `docker-compose`:
+
+```sh
+docker-compose up -d
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+We could validate it works by `docker ps`:
+
+```
+CONTAINER ID   IMAGE                                 COMMAND                  CREATED          STATUS          PORTS                                       NAMES
+8dd96d941c7f   postgres:latest                       "docker-entrypoint.s…"   3 minutes ago    Up 3 minutes    0.0.0.0:5432->5432/tcp, :::5432->5432/tcp   workflow_umbrella_postgres_1
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+Now, we could start our project by
+
+```sh
+iex --name myapp@localhost --cookie some_token -S mix
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Troubleshootings
+
+* Error when `docker-compose up -d`, shows \
+  docker.credentials.errors.InitializationError: docker-credential-desktop.exe not installed or not available in PATH
+
+  Solution:
+
+  * `vi ~/.docker/config.json`
+  * Change `credsStore` to `credStore`.
+
+  After the modification,
+
+  ```sh
+  zw@zwpdbh:~/code/elixir_programming/workflow_umbrella$ cat ~/.docker/config.json
+  {
+    "credStore": "desktop.exe"
+  }
+  ```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 2. Use Livebook as super REPL
+
+Let's use Livebook from container to connect to the project we just started from section 1.
+
+### Start Livebook using Container image
+
+```sh
+docker run \
+--network=host \
+-e LIVEBOOK_DISTRIBUTION=name \
+-e LIVEBOOK_COOKIE=some_token \
+-e LIVEBOOK_NODE=livebook@localhost \
+-u $(id -u):$(id -g) \
+-v $(pwd):/data \
+ghcr.io/livebook-dev/livebook:0.8.1
+```
+
+* `--network` specify the docker container we run use [Host network driver](https://docs.docker.com/network/drivers/host/).
+
+* Those LIVEBOOK options are from [Livebook README](https://github.com/livebook-dev/livebook).
+
+* Tag `0.8.1` from Livebook image support OTP25.
+
+* If succeed, it should oupt something like:
+
+  ```sh
+  [Livebook] Application running at http://0.0.0.0:8080/?token=gwc234cmrxsfnqkaeeu6hv7wjhg3qe2g
+  ```
+
+For more details, check this project's `README.md` located in the roote of the project.
+
+<!-- livebook:{"break_markdown":true} -->
+
+Let's execute some code from remote node.
+
+```elixir
+WorkflowWeb.module_info(:exports)
+```
