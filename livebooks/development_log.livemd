@@ -50,7 +50,7 @@ CONTAINER ID   IMAGE                                 COMMAND                  CR
 
 <!-- livebook:{"break_markdown":true} -->
 
-Now, we could start our project by
+### Start our umbrella project
 
 ```sh
 iex --name myapp@localhost --cookie some_token -S mix
@@ -108,7 +108,7 @@ ghcr.io/livebook-dev/livebook:0.8.1
   [Livebook] Application running at http://0.0.0.0:8080/?token=gwc234cmrxsfnqkaeeu6hv7wjhg3qe2g
   ```
 
-For more details, check this project's `README.md` located in the roote of the project.
+For more details, check section one in `README.md`  located in the roote of the project.
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -117,22 +117,6 @@ Let's execute some code from remote node.
 ```elixir
 # Check the exported functions from WorkflowWeb module.
 WorkflowWeb.module_info(:exports)
-```
-
-```elixir
-# Check Repo 
-alias Ecto.Repo
-
-import Ecto.Query, only: [from: 2]
-
-query =
-  from(u in User,
-    where: u.age > 18 or is_nil(u.email),
-    select: u
-  )
-
-# Returns %User{} structs matching the query
-Repo.all(query)
 ```
 
 <!-- livebook:{"branch_parent_index":0} -->
