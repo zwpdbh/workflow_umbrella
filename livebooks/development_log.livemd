@@ -1,0 +1,193 @@
+# Development Log
+
+## Introduction
+
+This livebook is used to records down the development progress of workflow-stack project.
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 1. Postgresql for local development
+
+For local dev, this app need postgresql. \
+We will use postgresql from docker container for best practise.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Adding docker to project
+
+In the main directory of our project create a file called `docker-compose.yml` and fill it with the below details:
+
+```yaml
+version: "3.2"
+services:
+  postgres:
+    image: postgres:latest
+    restart: always
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: workflow_dev
+    volumes:
+      - ../postgres-data:/var/lib/postgresql/data
+```
+
+We can now start the service using `docker-compose`:
+
+```sh
+docker-compose up -d
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+We could validate it works by `docker ps`:
+
+```
+CONTAINER ID   IMAGE                                 COMMAND                  CREATED          STATUS          PORTS                                       NAMES
+8dd96d941c7f   postgres:latest                       "docker-entrypoint.s…"   3 minutes ago    Up 3 minutes    0.0.0.0:5432->5432/tcp, :::5432->5432/tcp   workflow_umbrella_postgres_1
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+Now, we could start our project by
+
+```sh
+iex --name myapp@localhost --cookie some_token -S mix
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Troubleshootings
+
+* Error when `docker-compose up -d`, shows \
+  docker.credentials.errors.InitializationError: docker-credential-desktop.exe not installed or not available in PATH
+
+  Solution:
+
+  * `vi ~/.docker/config.json`
+  * Change `credsStore` to `credStore`.
+
+  After the modification,
+
+  ```sh
+  zw@zwpdbh:~/code/elixir_programming/workflow_umbrella$ cat ~/.docker/config.json
+  {
+    "credStore": "desktop.exe"
+  }
+  ```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 2. Use Livebook as super REPL
+
+Let's use Livebook from container to connect to the project we just started from section 1.
+
+### Start Livebook using Container image
+
+```sh
+docker run \
+--network=host \
+-e LIVEBOOK_DISTRIBUTION=name \
+-e LIVEBOOK_COOKIE=some_token \
+-e LIVEBOOK_NODE=livebook@localhost \
+-u $(id -u):$(id -g) \
+-v $(pwd):/data \
+ghcr.io/livebook-dev/livebook:0.8.1
+```
+
+* `--network` specify the docker container we run use [Host network driver](https://docs.docker.com/network/drivers/host/).
+
+* Those LIVEBOOK options are from [Livebook README](https://github.com/livebook-dev/livebook).
+
+* Tag `0.8.1` from Livebook image support OTP25.
+
+* If succeed, it should oupt something like:
+
+  ```sh
+  [Livebook] Application running at http://0.0.0.0:8080/?token=gwc234cmrxsfnqkaeeu6hv7wjhg3qe2g
+  ```
+
+For more details, check this project's `README.md` located in the roote of the project.
+
+<!-- livebook:{"break_markdown":true} -->
+
+Let's execute some code from remote node.
+
+```elixir
+# Check the exported functions from WorkflowWeb module.
+WorkflowWeb.module_info(:exports)
+```
+
+```elixir
+# Check Repo 
+alias Ecto.Repo
+
+import Ecto.Query, only: [from: 2]
+
+query =
+  from(u in User,
+    where: u.age > 18 or is_nil(u.email),
+    select: u
+  )
+
+# Returns %User{} structs matching the query
+Repo.all(query)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 3. Design
+
+### Thinking about context
+
+Contexts are dedicated modules that expose and group related functionality.
+
+By giving modules that expose and group related functionality the name contexts, we help developers identify these patterns and talk about them. At the end of the day, contexts are just modules, as are your controllers, views, etc.
+
+In Phoenix, contexts often encapsulate data access and data validation. They often talk to a database or APIs. Overall, think of them as boundaries to decouple and isolate parts of your application. Let's use these ideas to build out our web application.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Objective
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### Relative components
+
+* A `Worker`
+  * A worker is a `GenServer` process.
+* A `Step` is a pure function executed by a worker.
+* A `Workflow` is consisted of a series of steps. 
+  * It is the event a worker need to process.
+  * Each step dependents on the execution of previous one.
+* A `Scenario` is a group of `Workflows`.
+  * Each execution of `Workflow` is independent of each other.
+  * In other words, the `Workflow`s with a common topic/tag is a scenario.
+* A `Streamer` is a service broadcast `Workflows`.
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### Introduction - architectural design
+
+How components connected?
+
+* `Streamer` broadcast `Workflows` with multiple topics.
+* Three components
+  * A `Worker.Leader` could subscribe only one topic
+    * It keep monitoring and save each worker's state.
+    * Assign a workload to a worker.
+  * A `Worker.DynamicWorkerSuperivor` - because we need to start workers using `DynamicSupervisor` dynamically.
+  * Multiple `Worker`s to execute `Workload`s distributed to them.
+* For each scenario(symbol), we will need above 3 components.
+  * To effectiviely initialize them, we will add `SymbolSupervisor`, it will start both `Worker.Leader` and `Worker.DynamicWorkerSupervisor`
+* Each `SymbolSupervisor` is started from `DynamicSymbolSupervisor`
+* `DynamicSymbolSupervisor` is started from `WorkflowSupervisor` which is started by `Workflow` application.
+
+Summary:
+
+* `WorkflowSupervisor` is registered on `Workflow` application and started with application.
+* Inside `WorkflowSupervisor` it starts a dynamic supervisor `DynamicSymbolSupervisor`.
+* For each different symbol, `DynamicSymbolSupervisor` start a `SymbolSupervisor-#{symbol}` dynamically.
+* Inside `SymbolSupervisor`, it defines how to start: `Worker.Leader` + `Worker.DynamicWorkerSupervisor`
+* Finally, `Worker.Leader` use `Worker.DynamicWorkerSupervisor` to start and manage multiple `Worker`.
