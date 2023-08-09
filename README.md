@@ -1,5 +1,41 @@
 # Workflow.Umbrella
 
+## Local Dev 
+### Start Mix project with naming node
+```sh 
+iex --name myapp@localhost --cookie some_token -S mix
+Erlang/OTP 25 [erts-13.2] [source] [64-bit] [smp:24:24] [ds:24:24:10] [async-threads:1] [jit:ns]
+
+Interactive Elixir (1.14.3) - press Ctrl+C to exit (type h() ENTER for help)
+iex(myapp@localhost)1> Node.self
+:myapp@localhost
+```
+- `--name` specify we running node using full name mode. 
+   - `:"myapp@localhost"` is the node name.
+   - There is also a `--sname` short name option.
+- `--cookie` is the shared token for all connecting nodes.
+
+### Start Livebook using Container image
+```sh
+docker run \
+--network=host \
+-e LIVEBOOK_DISTRIBUTION=name \
+-e LIVEBOOK_COOKIE=some_token \
+-e LIVEBOOK_NODE=livebook@localhost \
+-u $(id -u):$(id -g) \
+-v $(pwd):/data \
+ghcr.io/livebook-dev/livebook:0.8.1
+```
+- `--network` specify the docker container we run use [Host network driver](https://docs.docker.com/network/drivers/host/).
+- Those LIVEBOOK options are from [Livebook README](https://github.com/livebook-dev/livebook).
+- Tag `0.8.1` from Livebook image support OTP25.
+- If succeed, it should oupt something like:
+
+  ```sh
+  [Livebook] Application running at http://0.0.0.0:8080/?token=gwc234cmrxsfnqkaeeu6hv7wjhg3qe2g
+  ```
+
+
 ## Phoenix Umbrella
 
 - Project is initialized by 
