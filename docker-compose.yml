@@ -1,10 +1,13 @@
-version: "3"
+version: "3.2"
 services:
   postgres:
-    image: postgres:15.3
+    image: postgres:latest
+    restart: always
     ports:
       - 5432:5432
     environment:
-      POSTGRES_USER: ${PSQL_USER}
-      POSTGRES_PASSWORD: ${PSQL_PWD}
-      POSTGRES_DB: ${PSQL_DB}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: workflow_dev
+    volumes:
+      - ../postgres-data:/var/lib/postgresql/data
