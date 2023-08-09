@@ -115,5 +115,79 @@ For more details, check this project's `README.md` located in the roote of the p
 Let's execute some code from remote node.
 
 ```elixir
+# Check the exported functions from WorkflowWeb module.
 WorkflowWeb.module_info(:exports)
 ```
+
+```elixir
+# Check Repo 
+alias Ecto.Repo
+
+import Ecto.Query, only: [from: 2]
+
+query =
+  from(u in User,
+    where: u.age > 18 or is_nil(u.email),
+    select: u
+  )
+
+# Returns %User{} structs matching the query
+Repo.all(query)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 3. Design
+
+### Thinking about context
+
+Contexts are dedicated modules that expose and group related functionality.
+
+By giving modules that expose and group related functionality the name contexts, we help developers identify these patterns and talk about them. At the end of the day, contexts are just modules, as are your controllers, views, etc.
+
+In Phoenix, contexts often encapsulate data access and data validation. They often talk to a database or APIs. Overall, think of them as boundaries to decouple and isolate parts of your application. Let's use these ideas to build out our web application.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Objective
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### Relative components
+
+* A `Worker`
+  * A worker is a `GenServer` process.
+* A `Step` is a pure function executed by a worker.
+* A `Workflow` is consisted of a series of steps. 
+  * It is the event a worker need to process.
+  * Each step dependents on the execution of previous one.
+* A `Scenario` is a group of `Workflows`.
+  * Each execution of `Workflow` is independent of each other.
+  * In other words, the `Workflow`s with a common topic/tag is a scenario.
+* A `Streamer` is a service broadcast `Workflows`.
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### Introduction - architectural design
+
+How components connected?
+
+* `Streamer` broadcast `Workflows` with multiple topics.
+* Three components
+  * A `Worker.Leader` could subscribe only one topic
+    * It keep monitoring and save each worker's state.
+    * Assign a workload to a worker.
+  * A `Worker.DynamicWorkerSuperivor` - because we need to start workers using `DynamicSupervisor` dynamically.
+  * Multiple `Worker`s to execute `Workload`s distributed to them.
+* For each scenario(symbol), we will need above 3 components.
+  * To effectiviely initialize them, we will add `SymbolSupervisor`, it will start both `Worker.Leader` and `Worker.DynamicWorkerSupervisor`
+* Each `SymbolSupervisor` is started from `DynamicSymbolSupervisor`
+* `DynamicSymbolSupervisor` is started from `WorkflowSupervisor` which is started by `Workflow` application.
+
+Summary:
+
+* `WorkflowSupervisor` is registered on `Workflow` application and started with application.
+* Inside `WorkflowSupervisor` it starts a dynamic supervisor `DynamicSymbolSupervisor`.
+* For each different symbol, `DynamicSymbolSupervisor` start a `SymbolSupervisor-#{symbol}` dynamically.
+* Inside `SymbolSupervisor`, it defines how to start: `Worker.Leader` + `Worker.DynamicWorkerSupervisor`
+* Finally, `Worker.Leader` use `Worker.DynamicWorkerSupervisor` to start and manage multiple `Worker`.
