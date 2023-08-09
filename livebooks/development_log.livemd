@@ -166,12 +166,18 @@ How components connected?
 * For each scenario(symbol), we will need above 3 components.
   * To effectiviely initialize them, we will add `SymbolSupervisor`, it will start both `Worker.Leader` and `Worker.DynamicWorkerSupervisor`
 * Each `SymbolSupervisor` is started from `DynamicSymbolSupervisor`
-* `DynamicSymbolSupervisor` is started from `WorkflowSupervisor` which is started by `Workflow` application.
+* `DynamicSymbolSupervisor` is started from `Workflow.Application` which is started by `Workflow` application.
 
 Summary:
 
-* `WorkflowSupervisor` is registered on `Workflow` application and started with application.
-* Inside `WorkflowSupervisor` it starts a dynamic supervisor `DynamicSymbolSupervisor`.
+* `Workflow.Application` is registered on `Workflow` application and started automatically when umbrella project starts.
+* Inside `Workflow.Application` it starts a dynamic supervisor `DynamicSymbolSupervisor`.
 * For each different symbol, `DynamicSymbolSupervisor` start a `SymbolSupervisor-#{symbol}` dynamically.
 * Inside `SymbolSupervisor`, it defines how to start: `Worker.Leader` + `Worker.DynamicWorkerSupervisor`
 * Finally, `Worker.Leader` use `Worker.DynamicWorkerSupervisor` to start and manage multiple `Worker`.
+
+## 4. Setup the Supervision Tree
+
+### Objectives
+
+* Create supervision tree to support multiple symbols (scenarios).

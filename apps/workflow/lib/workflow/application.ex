@@ -13,9 +13,10 @@ defmodule Workflow.Application do
       # Start the PubSub system
       {Phoenix.PubSub, name: Workflow.PubSub},
       # Start Finch
-      {Finch, name: Workflow.Finch}
+      {Finch, name: Workflow.Finch},
       # Start a worker by calling: Workflow.Worker.start_link(arg)
       # {Workflow.Worker, arg}
+      {DynamicSupervisor, name: DynamicSymbolSupervisor}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Workflow.Supervisor)
