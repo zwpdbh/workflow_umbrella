@@ -16,7 +16,10 @@ defmodule Workflow.Application do
       {Finch, name: Workflow.Finch},
       # Start a worker by calling: Workflow.Worker.start_link(arg)
       # {Workflow.Worker, arg}
-      {DynamicSupervisor, name: DynamicSymbolSupervisor}
+      {
+        DynamicSupervisor,
+        strategy: :one_for_one, name: DynamicSymbolSupervisor
+      }
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: WorkflowApp.Supervisor)

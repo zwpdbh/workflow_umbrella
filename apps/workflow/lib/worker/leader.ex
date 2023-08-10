@@ -14,11 +14,11 @@ defmodule Worker.Leader do
 
   @impl true
   def init(symbol) do
-    {:ok, %State{symbol: symbol}, {:continue, :start_worker}}
+    {:ok, %State{symbol: symbol}, {:continue, :start_workers}}
   end
 
   @impl true
-  def handle_continue(:start_worker, %{symbol: symbol} = state) do
+  def handle_continue(:start_workers, %{symbol: symbol} = state) do
     settings = fetch_symbol_settings(symbol)
     worker_state = fresh_worker_state(settings)
 
@@ -27,19 +27,22 @@ defmodule Worker.Leader do
     {:noreply, %{state | settings: settings, workers: workers}}
   end
 
-  defp fetch_symbol_settings(_symbol) do
+  defp fetch_symbol_settings(symbol) do
     %{
+      symbol: symbol,
       n_workers: 1
     }
   end
 
-  defp fresh_worker_state(_settings) do
-    struct(Worker.State)
+  defp fresh_worker_state(settings) do
+    struct(Worker.State, settings)
   end
 
-  def start_new_worker(%Worker.State{} = state) do
+  def start_new_worker(%Worker.State{symbol: symbol} = state) do
+    symbol |> IO.inspect(label: "#{__MODULE__} 41")
+
     DynamicSupervisor.start_child(
-      :"DynamicWorkerSupervisor-#{state.symbol}",
+      :"DynamicWorkerSupervisor-#{symbol}",
       {Worker, state}
     )
   end

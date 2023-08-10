@@ -10,4 +10,12 @@ defmodule Workflow do
   def test do
     Playground.hello()
   end
+
+  def start_scenario(symbol) do
+    {:ok, _pid} =
+      DynamicSupervisor.start_child(
+        DynamicSymbolSupervisor,
+        {SymbolSupervisor, symbol}
+      )
+  end
 end

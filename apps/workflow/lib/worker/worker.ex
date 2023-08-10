@@ -15,8 +15,11 @@ defmodule Worker do
     GenServer.start_link(__MODULE__, state)
   end
 
-  def init(%State{symbol: symbol} = _state) do
+  @impl true
+  def init(%State{symbol: symbol} = state) do
     Logger.info("Initializing new worker for #{symbol}")
+
+    {:ok, state}
   end
 
   # # Process workflow

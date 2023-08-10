@@ -176,6 +176,8 @@ Summary:
 * Inside `SymbolSupervisor`, it defines how to start: `Worker.Leader` + `Worker.DynamicWorkerSupervisor`
 * Finally, `Worker.Leader` use `Worker.DynamicWorkerSupervisor` to start and manage multiple `Worker`.
 
+<!-- livebook:{"branch_parent_index":0} -->
+
 ## 4. Setup the Supervision Tree
 
 ### Objectives
@@ -232,4 +234,120 @@ Now, we could render the supervision tree after `Workflow` application is starte
 # Render supervision tree
 # where "WorkflowApp.Supervisor" is the name we specified in "Workflow.Application"
 Kino.Process.render_sup_tree(WorkflowApp.Supervisor)
+```
+
+To see the supervision tree for a sencario, we need to first start a scenario.
+
+```elixir
+SymbolSupervisor.start_link("scenario_01")
+```
+
+### Troubleshootings
+
+<!-- livebook:{"break_markdown":true} -->
+
+Problem 01: Could not start workers when `SymbolSupervisor.start_link("scenario_01")`.
+
+```text
+[error] GenServer :"Elixir.Worker.Leader-scenario_01" terminating
+** (stop) exited in: GenServer.call(:"DynamicWorkerSupervisor-", {:start_child, {{Worker, :start_link, [%Worker.State{symbol: nil, status: :ready, current_step: nil, workload_history: [], context: %{}}]}, :temporary, 5000, :worker, [Worker]}}, :infinity)
+    ** (EXIT) no process: the process is not alive or there's no process currently associated with the given name, possibly because its application isn't started
+    (elixir 1.14.3) lib/gen_server.ex:1027: GenServer.call/3
+    (workflow 0.1.0) lib/worker/leader.ex:25: anonymous fn/3 in Worker.Leader.handle_continue/2
+    (elixir 1.14.3) lib/enum.ex:4299: Enum.reduce_range/5
+    (workflow 0.1.0) lib/worker/leader.ex:25: Worker.Leader.handle_continue/2
+    (stdlib 4.3) gen_server.erl:1123: :gen_server.try_dispatch/4
+    (stdlib 4.3) gen_server.erl:865: :gen_server.loop/7
+    (stdlib 4.3) proc_lib.erl:240: :proc_lib.init_p_do_apply/3
+Last message: {:continue, :start_worker}
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+The error happended from `Worker.Leader`'s callback `handle_continue`. Inside of it: \
+
+* fetch global settings for one symbol (a scenario)
+* initialize a fresh worker state
+* use the fresh worker state to start multiple workers
+
+The error happended because we forget to update the symbol into the fresh worker state. \
+By default, the default symbol for a worker state is `nil`. However, we need to update it to the symbol we used in setting.
+
+Solution
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+struct(Worker.State, settings)
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+Problem 02: The started trio part for a symbol is not in application supervision tree.
+
+```elixir
+# Our DynamicSymbolSupervisor has no children
+Supervisor.which_children(DynamicSymbolSupervisor)
+```
+
+However, a "SymbolSupervisor-#{symbol}" is created and along with its children.
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+defmodule SymbolSupervisor do
+  use Supervisor
+  require Logger
+
+  def start_link(symbol) do
+    Supervisor.start_link(__MODULE__, symbol, name: :"#{__MODULE__}-#{symbol}")
+  end
+  # ...
+end
+```
+
+```elixir
+Supervisor.which_children(:"Elixir.SymbolSupervisor-scenario_01")
+```
+
+```elixir
+Kino.Process.render_sup_tree(:"Elixir.SymbolSupervisor-scenario_01")
+```
+
+Solutin:
+
+* We shouldn't call `SymbolSupervisor.start_link("scenario_01")` directly.
+* We need to call it while specifying `DynamicSymbolSupervisor` is the `DynamicSupervisor` of
+
+<!-- livebook:{"break_markdown":true} -->
+
+So, it is better to create a interface function in `Workflow` module for this purpose.
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+defmodule Workflow do
+  @moduledoc """
+  Workflow keeps the contexts that define your domain
+  and business logic.
+
+  Contexts are also responsible for managing your data, regardless
+  if it comes from the database, an external API or others.
+  """
+  def start_scenario(symbol) do
+    {:ok, _pid} =
+      DynamicSupervisor.start_child(
+        DynamicSymbolSupervisor,
+        {SymbolSupervisor, symbol}
+      )
+  end
+end
+```
+
+```elixir
+Workflow.start_scenario("scenario_02")
+```
+
+```elixir
+Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 ```
