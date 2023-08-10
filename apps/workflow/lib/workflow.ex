@@ -18,4 +18,8 @@ defmodule Workflow do
         {SymbolSupervisor, symbol}
       )
   end
+
+  def stop_scenario(symbol) do
+    
+  end
 end

@@ -236,15 +236,40 @@ Now, we could render the supervision tree after `Workflow` application is starte
 Kino.Process.render_sup_tree(WorkflowApp.Supervisor)
 ```
 
+### Start a scenario
+
+A scenario is started by starting the corresponding `Supervisor-#{symbol}` from `DynamicSymbolSupervisor`.
+
+```elixir
+Workflow.start_scenario("scenario_02")
+```
+
+### Stop a scenario
+
+<!-- livebook:{"break_markdown":true} -->
+
+How to stop a scenario and stop all its children and children's children? \
+We do so by terminate `SymbolSupervisor-#{symbol}` from the `DynamicSymbolSupervisor`
+
+```elixir
+scenario_sup_pid = Process.whereis(:"Elixir.SymbolSupervisor-scenario_02")
+DynamicSupervisor.terminate_child(DynamicSymbolSupervisor, scenario_sup_pid)
+```
+
+```elixir
+# Check all the children for a DynamicSupervisor.
+DynamicSupervisor.which_children(DynamicSymbolSupervisor)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## (Optional) Troubleshooting section 4
+
 To see the supervision tree for a sencario, we need to first start a scenario.
 
 ```elixir
 SymbolSupervisor.start_link("scenario_01")
 ```
-
-### Troubleshootings
-
-<!-- livebook:{"break_markdown":true} -->
 
 Problem 01: Could not start workers when `SymbolSupervisor.start_link("scenario_01")`.
 
@@ -261,8 +286,6 @@ Problem 01: Could not start workers when `SymbolSupervisor.start_link("scenario_
     (stdlib 4.3) proc_lib.erl:240: :proc_lib.init_p_do_apply/3
 Last message: {:continue, :start_worker}
 ```
-
-<!-- livebook:{"break_markdown":true} -->
 
 The error happended from `Worker.Leader`'s callback `handle_continue`. Inside of it: \
 
@@ -307,6 +330,7 @@ end
 ```
 
 ```elixir
+# Notice the name of the process is prefixed by `Elixir`
 Supervisor.which_children(:"Elixir.SymbolSupervisor-scenario_01")
 ```
 
