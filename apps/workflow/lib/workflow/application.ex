@@ -19,6 +19,6 @@ defmodule Workflow.Application do
       {DynamicSupervisor, name: DynamicSymbolSupervisor}
     ]
 
-    Supervisor.start_link(children, strategy: :one_for_one, name: Workflow.Supervisor)
+    Supervisor.start_link(children, strategy: :one_for_one, name: WorkflowApp.Supervisor)
   end
 end

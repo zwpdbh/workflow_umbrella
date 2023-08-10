@@ -181,3 +181,55 @@ Summary:
 ### Objectives
 
 * Create supervision tree to support multiple symbols (scenarios).
+
+<!-- livebook:{"break_markdown":true} -->
+
+In application `Workflow`
+
+* Edit `mix.exs` file, specify the module which defines our application
+
+  ```elixir
+  def application do
+    [
+      mod: {Workflow.Application, []},
+      extra_applications: [:logger, :runtime_tools]
+    ]
+  end
+  ```
+
+* Edit `Workflow.Application` module
+
+  ```elixir
+    defmodule Workflow.Application do
+      # See https://hexdocs.pm/elixir/Application.html
+      # for more information on OTP Applications
+      @moduledoc false
+
+      use Application
+
+      @impl true
+      def start(_type, _args) do
+        children = [
+          # other childrens
+          # ... 
+          {DynamicSupervisor, name: DynamicSymbolSupervisor}
+        ]
+
+        Supervisor.start_link(children, strategy: :one_for_one, name: WorkflowApp.Supervisor)
+      end
+    end
+  ```
+
+  * Implement `application` behaviour.
+  * Add the child process we want to supervise.
+  * Start the application supervisor with a name: `WorkflowApp.Supervisor`.
+
+<!-- livebook:{"break_markdown":true} -->
+
+Now, we could render the supervision tree after `Workflow` application is started.
+
+```elixir
+# Render supervision tree
+# where "WorkflowApp.Supervisor" is the name we specified in "Workflow.Application"
+Kino.Process.render_sup_tree(WorkflowApp.Supervisor)
+```
