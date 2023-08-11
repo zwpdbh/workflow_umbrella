@@ -254,11 +254,19 @@ We do so by terminate `SymbolSupervisor-#{symbol}` from the `DynamicSymbolSuperv
 ```elixir
 scenario_sup_pid = Process.whereis(:"Elixir.SymbolSupervisor-scenario_02")
 DynamicSupervisor.terminate_child(DynamicSymbolSupervisor, scenario_sup_pid)
+
+if scenario_sup_pid do
+  DynamicSupervisor.terminate_child(DynamicSymbolSupervisor, scenario_sup_pid)
+end
 ```
 
 ```elixir
 # Check all the children for a DynamicSupervisor.
 DynamicSupervisor.which_children(DynamicSymbolSupervisor)
+```
+
+```elixir
+Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 ```
 
 <!-- livebook:{"branch_parent_index":0} -->
@@ -375,6 +383,8 @@ Workflow.start_scenario("scenario_02")
 ```elixir
 Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 ```
+
+<!-- livebook:{"branch_parent_index":0} -->
 
 ## 5. Execute workloads for one scenario V1
 

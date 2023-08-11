@@ -27,10 +27,38 @@ defmodule Worker.Leader do
     {:noreply, %{state | settings: settings, workers: workers}}
   end
 
+  # @impl true
+  # def handle_info({who: some_worker_pid, msg: :ready}, state) do
+  #   Logger.info("worker #{some_worker_pid} is ready")
+
+  #   # Assign it with workflow to execute
+  #   send(some_worker_pid, {msg: :execute, payload: %{}})
+
+  #   {:noreply, state}
+  # end
+
+  @impl true
+  def handle_cast(%{msg: :ready, from: some_worker}, state) do
+    Logger.info("worker #{inspect(some_worker)} is ready")
+    # Assign it with workflow to execute
+
+    GenServer.cast(some_worker, %{execute: []})
+    {:noreply, state}
+  end
+
+  # @impl true
+  # def handle_call(%{msg: :ready}, some_worker, state) do
+  #   Logger.info("worker #{some_worker} is ready")
+  #   # Assign it with workflow to execute
+
+  #   {:reply, %{workflow: []}, state}
+  # end
+
   defp fetch_symbol_settings(symbol) do
     %{
       symbol: symbol,
-      n_workers: 1
+      n_workers: 1,
+      report_to: self()
     }
   end
 
