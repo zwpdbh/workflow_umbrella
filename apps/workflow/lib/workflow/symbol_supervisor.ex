@@ -6,6 +6,7 @@ defmodule SymbolSupervisor do
     Supervisor.start_link(__MODULE__, symbol, name: :"#{__MODULE__}-#{symbol}")
   end
 
+  @impl true
   def init(symbol) do
     Logger.info("Starting new supervision tree for scenario #{symbol}")
 
@@ -18,6 +19,6 @@ defmodule SymbolSupervisor do
         {Worker.Leader, symbol}
       ],
       strategy: :one_for_all
-      )
+    )
   end
 end
