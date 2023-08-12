@@ -241,7 +241,8 @@ Kino.Process.render_sup_tree(WorkflowApp.Supervisor)
 A scenario is started by starting the corresponding `Supervisor-#{symbol}` from `DynamicSymbolSupervisor`.
 
 ```elixir
-Workflow.start_scenario("scenario_02")
+symbol = "simple_workflows"
+Workflow.start_scenario(symbol)
 ```
 
 ### Stop a scenario
@@ -252,21 +253,17 @@ How to stop a scenario and stop all its children and children's children? \
 We do so by terminate `SymbolSupervisor-#{symbol}` from the `DynamicSymbolSupervisor`
 
 ```elixir
-scenario_sup_pid = Process.whereis(:"Elixir.SymbolSupervisor-scenario_02")
-DynamicSupervisor.terminate_child(DynamicSymbolSupervisor, scenario_sup_pid)
-
-if scenario_sup_pid do
-  DynamicSupervisor.terminate_child(DynamicSymbolSupervisor, scenario_sup_pid)
-end
-```
-
-```elixir
 # Check all the children for a DynamicSupervisor.
 DynamicSupervisor.which_children(DynamicSymbolSupervisor)
 ```
 
 ```elixir
+# Here, we just render supervision tree under DynamicSymbolSupervisor.
 Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
+```
+
+```elixir
+Workflow.stop_scenario(symbol)
 ```
 
 <!-- livebook:{"branch_parent_index":0} -->

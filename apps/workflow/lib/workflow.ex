@@ -20,6 +20,12 @@ defmodule Workflow do
   end
 
   def stop_scenario(symbol) do
-    
+    scenario_sup_pid = Process.whereis(:"Elixir.SymbolSupervisor-#{symbol}")
+
+    if scenario_sup_pid != nil do
+      DynamicSupervisor.terminate_child(DynamicSymbolSupervisor, scenario_sup_pid)
+    else
+      {:err, "process Elixir.SymbolSupervisor-#{symbol} not exist"}
+    end
   end
 end
