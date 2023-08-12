@@ -42,7 +42,7 @@ defmodule Worker.Leader do
     Logger.info("worker #{inspect(some_worker)} is ready")
     # Assign it with workflow to execute
 
-    GenServer.cast(some_worker, %{execute: []})
+    GenServer.cast(some_worker, {:process_workflow, []})
     {:noreply, state}
   end
 

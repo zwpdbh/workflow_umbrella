@@ -50,15 +50,36 @@ defmodule Worker do
   # end
 
   @impl true
-  def handle_cast(%{execute: workflows}, state) do
-    Logger.info("Assigned workflow, there are #{workflows |> length} steps to do")
+  def handle_cast({:process_workflow, workflow}, state) do
+    Logger.info("Assigned workflow, there are #{workflow |> length} steps to do")
+    # We process workflow by keep send ourself messages.
+    # https://hexdocs.pm/elixir/GenServer.html#module-receiving-regular-messages
 
+    send(self(), {:run_workflow, workflow})
     {:noreply, state}
   end
 
-  def process_workflow(%{workflow_id: _workflow_id, workflow_parameters: _workflow_parameters}) do
-    # fetch workflow definition
-    # execute workflow's steps one after another in the GenServer process
-    # how ? check Plug for insight
+  @impl true
+  def handle_info({:run_workflow, []}, %State{report_to: leader} = state) do
+    Logger.info("There is no more steps to execute in workflow")
+    report_ready(leader)
+
+    # {:noreply, state}
+    {:stop, :normal, state}
+  end
+
+  @impl true
+  def handle_info(
+        {:run_workflow, [step | rest]},
+        %State{workload_history: workload_history} = state
+      ) do
+    Logger.info("Execute step: #{{inspect(step)}}")
+    Logger.info("Update state")
+
+    updated_history = [step | workload_history]
+    updated_state = Map.put(state, :workload_history, updated_history)
+
+    send(self(), {:run_workflow, [rest]})
+    {:noreply, updated_state}
   end
 end

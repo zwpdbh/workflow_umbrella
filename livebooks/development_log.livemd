@@ -242,6 +242,9 @@ A scenario is started by starting the corresponding `Supervisor-#{symbol}` from 
 
 ```elixir
 symbol = "simple_workflows"
+```
+
+```elixir
 Workflow.start_scenario(symbol)
 ```
 
@@ -433,8 +436,8 @@ apply(String.to_existing_atom("Elixir.Payload.SimpleSteps"), String.to_atom("sim
 
 ### How a worker execute a workflow
 
-So, a worker will execute a workflow as:
+* A worker during initialization will report ready to its leader as its last step. This is done using `GenServer.cast`.
+* A leader handle cast for `%{msg: :ready, from: some_worker}` and send back a workflow to the worker.
+* Now, the question is how the worker process the workflow (process real work).
 
-* Use `apply/3` to execute a step using current step, and mark it is `busy`.
-* Update the state
-* Send to `Leader` it is ready.
+We could use `handle_info` to [perform periodic work](https://hexdocs.pm/elixir/GenServer.html#module-receiving-regular-messages).
