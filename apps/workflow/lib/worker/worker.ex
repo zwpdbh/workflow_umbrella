@@ -64,8 +64,8 @@ defmodule Worker do
     Logger.info("There is no more steps to execute in workflow")
     report_ready(leader)
 
-    # {:noreply, state}
-    {:stop, :normal, state}
+    {:noreply, state}
+    # {:stop, :normal, state}
   end
 
   @impl true
