@@ -5,11 +5,12 @@ defmodule Worker.Leader do
   defmodule State do
     defstruct symbol: nil,
               settings: nil,
-              workers: []
+              workers: [],
+              workflows: []
   end
 
   def start_link(symbol) do
-    GenServer.start_link(__MODULE__, symbol, name: :"#{__MODULE__}-#{symbol}")
+    GenServer.start_link(__MODULE__, symbol, name: :"#{__MODULE__}_#{symbol}")
   end
 
   @impl true
@@ -27,32 +28,53 @@ defmodule Worker.Leader do
     {:noreply, %{state | settings: settings, workers: workers}}
   end
 
-  # @impl true
-  # def handle_info({who: some_worker_pid, msg: :ready}, state) do
-  #   Logger.info("worker #{some_worker_pid} is ready")
+  @impl true
+  def handle_call({:execute_workflows, workflows}, _pid, %{workflows: current_workflows} = state) do
+    updated_workflows = config_workflows(workflows) ++ current_workflows
 
-  #   # Assign it with workflow to execute
-  #   send(some_worker_pid, {msg: :execute, payload: %{}})
+    # After Leader got new workflows, how to envoke workers?
+    # Some workers are ready but got no workflows.
+    # TODO:
+    # We could ask each worker to report themselves.
 
-  #   {:noreply, state}
-  # end
+    {:reply, {:ok, workflows |> length}, %{state | workflows: updated_workflows}}
+  end
 
   @impl true
-  def handle_cast(%{msg: :ready, from: some_worker}, state) do
-    Logger.info("worker #{inspect(some_worker)} is ready")
-    # Assign it with workflow to execute
+  def handle_call({:workflow_is_finished, workflow_id}, worker_pid, state) do
+    Logger.info("Worker #{inspect(worker_pid)} finished workflow: #{workflow_id}")
+    {:reply, :ok, state}
+  end
 
-    GenServer.cast(some_worker, {:process_workflow, []})
+  @impl true
+  def handle_call({:workflow_status}, _from, %{workflows: workflows} = state) do
+    {:reply, {:ok, workflows}, state}
+  end
+
+  defp config_workflows(workflows) do
+    workflows
+    |> Enum.map(fn each -> %{steps: each, id: UUID.uuid1(), status: :not_start_yet} end)
+  end
+
+  @impl true
+  def handle_cast({:worker_is_ready, some_worker}, %{workflows: []} = state) do
+    Logger.info(
+      "Worker #{inspect(some_worker)} is ready, there are currently 0 workflows to be executed"
+    )
+
     {:noreply, state}
   end
 
-  # @impl true
-  # def handle_call(%{msg: :ready}, some_worker, state) do
-  #   Logger.info("worker #{some_worker} is ready")
-  #   # Assign it with workflow to execute
+  @impl true
+  def handle_cast(
+        {:worker_is_ready, some_worker},
+        %{workflows: [%{id: workflow_id} = workflow | rest]} = state
+      ) do
+    Logger.info("Worker #{inspect(some_worker)} is ready, assign workflow #{workflow_id} to it")
 
-  #   {:reply, %{workflow: []}, state}
-  # end
+    GenServer.cast(some_worker, {:process_workflow, workflow})
+    {:noreply, %{state | workflows: rest}}
+  end
 
   defp fetch_symbol_settings(symbol) do
     %{
@@ -67,11 +89,33 @@ defmodule Worker.Leader do
   end
 
   def start_new_worker(%Worker.State{symbol: symbol} = state) do
-    symbol |> IO.inspect(label: "#{__MODULE__} 41")
-
     DynamicSupervisor.start_child(
-      :"DynamicWorkerSupervisor-#{symbol}",
+      :"DynamicWorkerSupervisor_#{symbol}",
       {Worker, state}
     )
+  end
+
+  def execute_workflows(symbol, workflows) do
+    worker_leader_pid = Process.whereis(:"Elixir.Worker.Leader_#{symbol}")
+
+    case worker_leader_pid do
+      nil ->
+        Logger.error("There is no Worker.Leader for scenario: #{symbol}")
+
+      pid ->
+        GenServer.call(pid, {:execute_workflows, workflows})
+    end
+  end
+
+  def workflow_status(symbol) do
+    worker_leader_pid = Process.whereis(:"Elixir.Worker.Leader_#{symbol}")
+
+    case worker_leader_pid do
+      nil ->
+        Logger.error("There is no Worker.Leader for scenario: #{symbol}")
+
+      pid ->
+        GenServer.call(pid, {:workflow_status})
+    end
   end
 end

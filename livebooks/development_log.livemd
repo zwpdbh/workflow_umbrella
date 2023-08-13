@@ -441,3 +441,46 @@ apply(String.to_existing_atom("Elixir.Payload.SimpleSteps"), String.to_atom("sim
 * Now, the question is how the worker process the workflow (process real work).
 
 We could use `handle_info` to [perform periodic work](https://hexdocs.pm/elixir/GenServer.html#module-receiving-regular-messages).
+
+<!-- livebook:{"break_markdown":true} -->
+
+Review from section 4 about how to start a scenario
+
+```elixir
+symbol = "simple_workflows"
+```
+
+```elixir
+Workflow.start_scenario(symbol)
+```
+
+```elixir
+# Check all the children for a DynamicSupervisor.
+DynamicSupervisor.which_children(DynamicSymbolSupervisor) |> IO.inspect()
+# Here, we just render supervision tree under DynamicSymbolSupervisor.
+Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
+```
+
+```elixir
+workflows = Payload.SimpleWorkflow.random_workflow_from_simple_steps()
+```
+
+```elixir
+Worker.Leader.execute_workflows(symbol, workflows)
+```
+
+TODO:
+
+* Add interface function to check the status of scenario
+* How many workflows, their status
+* Each worker's status
+
+```elixir
+Worker.Leader.workflow_status(symbol)
+```
+
+At last, stop the scenario.
+
+```elixir
+Workflow.stop_scenario(symbol)
+```

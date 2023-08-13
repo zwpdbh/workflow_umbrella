@@ -3,7 +3,7 @@ defmodule SymbolSupervisor do
   require Logger
 
   def start_link(symbol) do
-    Supervisor.start_link(__MODULE__, symbol, name: :"#{__MODULE__}-#{symbol}")
+    Supervisor.start_link(__MODULE__, symbol, name: :"#{__MODULE__}_#{symbol}")
   end
 
   @impl true
@@ -14,7 +14,7 @@ defmodule SymbolSupervisor do
       [
         {
           DynamicSupervisor,
-          strategy: :one_for_one, name: :"DynamicWorkerSupervisor-#{symbol}"
+          strategy: :one_for_one, name: :"DynamicWorkerSupervisor_#{symbol}"
         },
         {Worker.Leader, symbol}
       ],

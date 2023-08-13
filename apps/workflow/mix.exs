@@ -42,6 +42,7 @@ defmodule Workflow.MixProject do
       {:jason, "~> 1.2"},
       {:swoosh, "~> 1.3"},
       {:finch, "~> 0.13"},
+      {:uuid, "~> 1.1"},
       {:playground, in_umbrella: true}
     ]
   end

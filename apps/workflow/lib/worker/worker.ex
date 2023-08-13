@@ -12,6 +12,9 @@ defmodule Worker do
               context: %{}
   end
 
+  @doc """
+  This function is needed because we create worker dynamically via "DynamicSupervisor.start_child"
+  """
   def start_link(%State{} = state) do
     GenServer.start_link(__MODULE__, state)
   end
@@ -28,15 +31,12 @@ defmodule Worker do
     # The place to fully initialize worker before doing task
 
     # # Notice leader that I am ready
-    report_ready(leader)
+    GenServer.cast(leader, {:worker_is_ready, self()})
+
     # GenServer.call(leader, %{msg: :ready})
     # send(leader, {who: self(), msg: :ready})
 
     {:noreply, state}
-  end
-
-  defp report_ready(leader) do
-    GenServer.cast(leader, %{msg: :ready, from: self()})
   end
 
   # # Process workflow
@@ -50,8 +50,14 @@ defmodule Worker do
   # end
 
   @impl true
-  def handle_cast({:process_workflow, workflow}, state) do
-    Logger.info("Assigned workflow, there are #{workflow |> length} steps to do")
+  def handle_cast(
+        {:process_workflow, %{steps: workflow_steps, id: workflow_id} = workflow},
+        state
+      ) do
+    Logger.info(
+      "Assigned workflow #{workflow_id}, there are #{workflow_steps |> length} steps to do"
+    )
+
     # We process workflow by keep send ourself messages.
     # https://hexdocs.pm/elixir/GenServer.html#module-receiving-regular-messages
 
@@ -59,15 +65,21 @@ defmodule Worker do
     {:noreply, state}
   end
 
+  # Callback for runing workflow which its steps is empty.
+  # We should stop the worker and let leader restart it.
   @impl true
-  def handle_info({:run_workflow, []}, %State{report_to: leader} = state) do
-    Logger.info("There is no more steps to execute in workflow")
-    report_ready(leader)
+  def handle_info(
+        {:run_workflow, %{steps: [], id: workflow_id}},
+        %State{report_to: leader} = state
+      ) do
+    Logger.info("There is no more steps to execute in workflow #{workflow_id}, exit...")
+    GenServer.call(leader, {:workflow_is_finished})
 
-    {:noreply, state}
-    # {:stop, :normal, state}
+    {:stop, :normal, state}
   end
 
+  # Callback for running workflow
+  # It runs workflow by running a step from the workflow recursively.
   @impl true
   def handle_info(
         {:run_workflow, [step | rest]},
