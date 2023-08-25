@@ -18,13 +18,13 @@ iex(myapp@localhost)1> Node.self
 ### Start Livebook using Container image
 ```sh
 docker run \
+--network=host \
+-e RELEASE_NODE=workflow_umbrella \
 -e LIVEBOOK_DISTRIBUTION=name \
 -e LIVEBOOK_COOKIE=some_token \
 -e LIVEBOOK_NODE=livebook@localhost \
 -e LIVEBOOK_PORT=8003 \
 -e LIVEBOOK_IFRAME_PORT=8004 \
--p 8003:8003 \
--p 8004:8004 \
 -u $(id -u):$(id -g) \
 -v $(pwd):/data \
 ghcr.io/livebook-dev/livebook:0.8.1
