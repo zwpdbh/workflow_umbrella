@@ -56,5 +56,5 @@ settings = %{
 ```
 
 ```elixir
-settings |> Rep.set_subscription()
+settings |> Rep.az_login_using_sp()
 ```

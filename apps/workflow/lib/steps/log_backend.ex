@@ -1,7 +1,9 @@
 defmodule Steps.LogBackend do
+  alias Steps.Common.Time
+
   def log_to_file(%{log_file: log_file_path, content: content}) do
     Task.start(fn ->
-      create_log_file_if_not_exist(log_file_path)
+      prepare_log_file_folder(log_file_path)
 
       {:ok, log_file} = File.open(log_file_path, [:append])
       write_content_to_log(content, log_file)
@@ -41,17 +43,28 @@ defmodule Steps.LogBackend do
     IO.binwrite(log_file, "#{inspect(content)}")
   end
 
-  defp create_log_file_if_not_exist(log_file) do
-    if not File.exists?(log_file) do
-      File.mkdir_p!(Path.dirname(log_file))
+  defp prepare_log_file_folder(log_file) do
+    log_file
+    |> Path.dirname()
+    |> create_folder_if_not_exist()
+  end
+
+  def create_folder_if_not_exist(folder) when is_binary(folder) do
+    if not File.exists?(folder) do
+      File.mkdir_p!(folder)
     end
   end
 
   def create_tmp_log_file() do
-    Path.join([File.cwd!(), "/tmp/logs", "#{Steps.Common.Time.get_time_millisecond()}.txt"])
+    Path.join([
+      System.tmp_dir!(),
+      "/logs",
+      Time.get_current_date_str(),
+      "#{Time.get_time_millisecond()}.txt"
+    ])
   end
 
   def create_tmp_log_file(log_file_name) do
-    Path.join([File.cwd!(), "/tmp/logs", log_file_name])
+    Path.join([System.tmp_dir!(), "/logs", Time.get_current_date_str(), log_file_name])
   end
 end
