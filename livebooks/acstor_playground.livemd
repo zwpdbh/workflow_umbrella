@@ -10,3 +10,51 @@ So, start workflow_umbrella project and connect to it as attached node.
 alias Azure.Auth
 Auth.get_auth_token(Auth.azure_scope())
 ```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Test log to a local file
+
+```elixir
+alias Steps.Exec
+```
+
+```elixir
+Steps.Common.Time.get_time_millisecond()
+```
+
+```elixir
+log_file = Steps.LogBackend.create_tmp_log_file("playground.txt")
+```
+
+```elixir
+Exec.run(%{cmd: "ls -la", log_file: log_file})
+```
+
+```elixir
+Exec.run(%{cmd: "ls filenotexist", log_file: log_file})
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Test replication steps and log to a file
+
+```elixir
+alias Steps.Acstor.Replication, as: Rep
+```
+
+```elixir
+log_file = Steps.LogBackend.create_tmp_log_file("replication.txt")
+```
+
+```elixir
+settings = %{
+  sub: "65490f91-f2c2-4514-80ba-4ec1de89aeda",
+  region: "eastus",
+  rg: "acstor-replication-test"
+}
+```
+
+```elixir
+settings |> Rep.set_subscription()
+```
