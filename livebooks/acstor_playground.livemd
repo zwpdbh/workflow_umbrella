@@ -59,3 +59,28 @@ settings = %{
 ```elixir
 settings |> Rep.az_set_subscription()
 ```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## How to use Worker to execute ACStor replication
+
+* For one scenario such as managed disk, `Worker.Leader` load different settings from a scenario setting service. Such as number of disks, run time. 
+  The purpose of this is to generate different settings for each workflow later to use.
+
+* `Worker.Leader` specify how many `Worker` are created. There could be `M` workers for `N` workflows.
+
+* For replication, when `Worker.Leader` assign workflow to `worker`, it need to reset worker's some interal state (such as: AKS cluster name)
+
+* A `Worker` use inital settings got from `Worker.Leader` to run workflow by execute each steps in the workflow.
+
+* After each step is execute by a `Worker`, the state of the `Worker` need to be updated by that step.
+
+Each step is a pure function from Steps.Acstor.Replication module.
+
+* We update a `Worker`'s state by wrapping the pure function in another function.
+
+**Update**
+
+* `Worker` no longer execute workflows, it doesn't know about workflows.
+* `Worker` only care about executing a step.
+* The concept of workflow which is the sequence of steps is kept only in `Worker.Leader`.

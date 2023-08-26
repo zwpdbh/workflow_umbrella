@@ -9,6 +9,7 @@ defmodule Worker do
               report_to: nil,
               current_step: nil,
               workload_history: [],
+              step_context: %{},
               context: %{}
   end
 
@@ -93,5 +94,16 @@ defmodule Worker do
 
     send(self(), {:run_workflow, [rest]})
     {:noreply, updated_state}
+  end
+
+  @impl true
+  def handle_info({:run_step, step_f}, %State{step_context: context} = state) do
+  end
+
+  def worker_exec_step(%{state: state, step_fun: f}) when is_map(state) do
+    {:ok, new_state} = f.(state)
+
+    updated_state = Map.merge(state, new_state)
+    {:ok, updated_state}
   end
 end

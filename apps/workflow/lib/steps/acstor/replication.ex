@@ -5,6 +5,7 @@ defmodule Steps.Acstor.Replication do
   alias Steps.Exec
   alias Steps.Common.Time
 
+  # Step 1
   def az_login_using_sp(%{} = _settings) do
     Azure.Auth.ServicePrinciple.new()
     |> create_cli_session()
@@ -48,6 +49,7 @@ defmodule Steps.Acstor.Replication do
     |> Enum.join("")
   end
 
+  # Step 2
   def az_set_subscription(%{sub: sub_id, session_dir: session_dir}) do
     Exec.run(%{
       cmd: "az account set --subscription #{sub_id}",
