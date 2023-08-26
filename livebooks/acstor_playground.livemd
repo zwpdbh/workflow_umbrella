@@ -1,0 +1,12 @@
+# ACStor Playground
+
+## Introduction
+
+This livebook is used to play as REPL for developing ACStor Scenario.
+So, start workflow_umbrella project and connect to it as attached node.
+
+```elixir
+# Test to see if we could get auth token from workflow_umbrella project.
+alias Azure.Auth
+Auth.get_auth_token(Auth.azure_scope())
+```
