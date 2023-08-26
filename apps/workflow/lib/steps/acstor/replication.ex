@@ -6,7 +6,7 @@ defmodule Steps.Acstor.Replication do
   alias Steps.Common.Time
 
   def az_login_using_sp(%{} = _settings) do
-    %Azure.Auth.ServicePrinciple{}
+    Azure.Auth.ServicePrinciple.new()
     |> create_cli_session()
   end
 
@@ -17,11 +17,14 @@ defmodule Steps.Acstor.Replication do
        }) do
     {:ok, session_dir} = prepare_session_folder()
 
-    Steps.Exec.run(%{
-      cmd:
-        "az login --service-principal -u #{client_id} -p #{client_secret} --tenant #{tenant_id}",
-      env: [{"AZURE_CONFIG_DIR", session_dir}]
-    })
+    {:ok, _output} =
+      Exec.run(%{
+        cmd:
+          "az login --service-principal -u #{client_id} -p #{client_secret} --tenant #{tenant_id}",
+        env: [{"AZURE_CONFIG_DIR", session_dir}]
+      })
+
+    {:ok, session_dir}
   end
 
   defp prepare_session_folder() do
@@ -45,7 +48,10 @@ defmodule Steps.Acstor.Replication do
     |> Enum.join("")
   end
 
-  def az_set_subscription(%{sub: sub_id}) do
-    Exec.run("az account set --subscription #{sub_id}")
+  def az_set_subscription(%{sub: sub_id, session_dir: session_dir}) do
+    Exec.run(%{
+      cmd: "az account set --subscription #{sub_id}",
+      env: [{"AZURE_CONFIG_DIR", session_dir}]
+    })
   end
 end

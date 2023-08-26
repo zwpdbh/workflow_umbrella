@@ -51,10 +51,11 @@ log_file = Steps.LogBackend.create_tmp_log_file("replication.txt")
 settings = %{
   sub: "65490f91-f2c2-4514-80ba-4ec1de89aeda",
   region: "eastus",
-  rg: "acstor-replication-test"
+  rg: "acstor-replication-test",
+  session_dir: "/tmp/logs/2023-8-26/az_cli_sessions/lot2mn"
 }
 ```
 
 ```elixir
-settings |> Rep.az_login_using_sp()
+settings |> Rep.az_set_subscription()
 ```
