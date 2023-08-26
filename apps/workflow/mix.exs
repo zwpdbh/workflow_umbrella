@@ -43,6 +43,7 @@ defmodule Workflow.MixProject do
       {:swoosh, "~> 1.3"},
       {:finch, "~> 0.13"},
       {:uuid, "~> 1.1"},
+      {:httpoison, "~> 2.0"},
       {:playground, in_umbrella: true}
     ]
   end
