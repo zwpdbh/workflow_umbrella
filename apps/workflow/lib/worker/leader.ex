@@ -123,6 +123,16 @@ defmodule Worker.Leader do
     end
   end
 
+  @impl true
+  def handle_info({:worker_step_error, error_context}, state) do
+    # TODO
+    Logger.debug(
+      "TODO how to restart a failed worker from failed step: #{Jason.encode!(error_context)}"
+    )
+
+    {:noreply, state}
+  end
+
   # @impl true
   # def handle_cast(
   #       {:worker_is_ready, some_worker},

@@ -1,6 +1,7 @@
 defmodule Azure.Auth do
   alias Http.RestClient
   use GenServer
+  require Logger
 
   # It is the resource identifier of the resource you want. It is affixed with the .default suffix.
   # Here, the resource identifier is checked by
@@ -163,8 +164,7 @@ defmodule Azure.Auth do
 
   @impl true
   def handle_info(msg, state) do
-    require Logger
-    Logger.debug("Unexpected message: #{inspect(msg)}")
+    Logger.debug("Unexpected message: #{IO.inspect(msg)}")
     {:noreply, state}
   end
 
