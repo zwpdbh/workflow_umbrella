@@ -19,6 +19,7 @@ defmodule Steps.Acstor.Replication do
       Azure.Auth.ServicePrinciple.new()
       |> create_cli_session()
 
+    # If the step produce any extra parameters, we need to add return it as eplicitly in map form.
     %{session_dir: session_dir}
   end
 
@@ -62,9 +63,13 @@ defmodule Steps.Acstor.Replication do
 
   # Step 2
   def az_set_subscription(%{sub: sub_id, session_dir: session_dir}) do
-    Exec.run(%{
-      cmd: "az account set --subscription #{sub_id}",
-      env: [{"AZURE_CONFIG_DIR", session_dir}]
-    })
+    {:ok, _output} =
+      Exec.run(%{
+        cmd: "az account set --subscription #{sub_id}",
+        env: [{"AZURE_CONFIG_DIR", session_dir}]
+      })
+
+    # If the step produce no extra parameter (or context), we need to return empty map
+    %{}
   end
 end

@@ -126,6 +126,14 @@ Worker.run_step(%{
 ```
 
 ```elixir
+Worker.run_step(%{
+  worker_pid: worker_pid,
+  module_name: "Steps.Acstor.Replication",
+  step_name: "az_set_subscription"
+})
+```
+
+```elixir
 # check worker context
 Worker.current_state(worker_pid)
 ```
