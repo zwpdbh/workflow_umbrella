@@ -84,3 +84,48 @@ Each step is a pure function from Steps.Acstor.Replication module.
 * `Worker` no longer execute workflows, it doesn't know about workflows.
 * `Worker` only care about executing a step.
 * The concept of workflow which is the sequence of steps is kept only in `Worker.Leader`.
+
+## Scenario Settings
+
+```elixir
+symbol = "azure_disk_replication"
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Test 01: start scenario
+
+```elixir
+# Start a scenario
+Workflow.start_scenario(symbol)
+```
+
+```elixir
+Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
+```
+
+```elixir
+# Stop a scenario
+Workflow.stop_scenario(symbol)
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Test 02: execute one step from worker
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+```
+
+```elixir
+Worker.run_step(%{
+  worker_pid: worker_pid,
+  module_name: "Steps.Acstor.Replication",
+  step_name: "az_login_using_sp"
+})
+```
+
+```elixir
+# check worker context
+Worker.current_state(worker_pid)
+```

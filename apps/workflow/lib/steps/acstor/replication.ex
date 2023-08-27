@@ -5,10 +5,21 @@ defmodule Steps.Acstor.Replication do
   alias Steps.Exec
   alias Steps.Common.Time
 
+  def init_context() do
+    %{
+      sub: "65490f91-f2c2-4514-80ba-4ec1de89aeda",
+      region: "eastus",
+      rg: "acstor-replication-test"
+    }
+  end
+
   # Step 1
   def az_login_using_sp(%{} = _settings) do
-    Azure.Auth.ServicePrinciple.new()
-    |> create_cli_session()
+    {:ok, session_dir} =
+      Azure.Auth.ServicePrinciple.new()
+      |> create_cli_session()
+
+    %{session_dir: session_dir}
   end
 
   defp create_cli_session(%Azure.Auth.ServicePrinciple{
