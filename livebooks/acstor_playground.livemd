@@ -137,3 +137,78 @@ Worker.run_step(%{
 # check worker context
 Worker.current_state(worker_pid)
 ```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Test 03: execute one step with error
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+Worker.run_step(%{
+  worker_pid: worker_pid,
+  module_name: "Steps.Acstor.Replication",
+  step_name: "dummy_step_will_fail"
+})
+```
+
+The `reason` is a tuple with two parts:
+
+* The first part: `:badmatch` indicate the error type and `{:err, "ls: cannot access 'non_exist_file': No such file or directory\n"}` shows reason for the error type.
+* The second part shows the stacktrace.
+
+<!-- livebook:{"break_markdown":true} -->
+
+For example, if the step we execute list some file doesn't exist. We could catch the error in callback
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+@impl true
+def terminate(reason, %{step_context: context} = _state) do
+  reason |> IO.inspect(label: "#{__MODULE__} 64")
+  context |> IO.inspect(label: "#{__MODULE__} 65")
+
+  :normal
+end
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+The `reason` is
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+{
+  {:badmatch, {:err, "ls: cannot access 'non_exist_file': No such file or directory\n"}},
+  [
+    {Steps.Acstor.Replication, :step_failed, 1,
+      [file: 'lib/steps/acstor/replication.ex', line: 77]},
+    {Worker, :handle_cast, 2, [file: 'lib/worker/worker.ex', line: 46]},
+    {:gen_server, :try_dispatch, 4, [file: 'gen_server.erl', line: 1123]},
+    {:gen_server, :handle_msg, 6, [file: 'gen_server.erl', line: 1200]},
+    {:proc_lib, :init_p_do_apply, 3, [file: 'proc_lib.erl', line: 240]}
+  ]
+}
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+The output on terminal shows the worker process has terminated.
+
+```sh
+[error] GenServer #PID<0.9844.0> terminating
+** (MatchError) no match of right hand side value: {:err, "ls: cannot access 'non_exist_file': No such file or directory\n"}
+    (workflow 0.1.0) lib/steps/acstor/replication.ex:77: Steps.Acstor.Replication.step_failed/1
+    (workflow 0.1.0) lib/worker/worker.ex:46: Worker.handle_cast/2
+    (stdlib 4.3) gen_server.erl:1123: :gen_server.try_dispatch/4
+    (stdlib 4.3) gen_server.erl:1200: :gen_server.handle_msg/6
+    (stdlib 4.3) proc_lib.erl:240: :proc_lib.init_p_do_apply/3
+Last message: {:"$gen_cast", {:run_step, "Steps.Acstor.Replication", "step_failed"}}
+State: %Worker.State{symbol: "azure_disk_replication", status: :ready, report_to: #PID<0.9843.0>, history: [{"Steps.Acstor.Replication", "az_set_subscription"}, {"Steps.Acstor.Replication", "az_login_using_sp"}], step_context: %{region: "eastus", rg: "acstor-replication-test", session_dir: "/tmp/logs/2023-8-27/az_cli_sessions/2bc5oj", sub: "65490f91-f2c2-4514-80ba-4ec1de89aeda"}}
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+So, we need to save our state to leader in the callback.

@@ -72,4 +72,28 @@ defmodule Steps.Acstor.Replication do
     # If the step produce no extra parameter (or context), we need to return empty map
     %{}
   end
+
+  # For testing only to test how to handle a step failed
+  def dummy_step_will_fail(%{} = _context) do
+    {:ok, _output} =
+      Exec.run(%{
+        cmd: "ls non_exist_file"
+      })
+
+    %{}
+  end
+
+  def test() do
+    {
+      {:badmatch, {:err, "ls: cannot access 'non_exist_file': No such file or directory\n"}},
+      [
+        {Steps.Acstor.Replication, :step_failed, 1,
+         [file: 'lib/steps/acstor/replication.ex', line: 77]},
+        {Worker, :handle_cast, 2, [file: 'lib/worker/worker.ex', line: 46]},
+        {:gen_server, :try_dispatch, 4, [file: 'gen_server.erl', line: 1123]},
+        {:gen_server, :handle_msg, 6, [file: 'gen_server.erl', line: 1200]},
+        {:proc_lib, :init_p_do_apply, 3, [file: 'proc_lib.erl', line: 240]}
+      ]
+    }
+  end
 end

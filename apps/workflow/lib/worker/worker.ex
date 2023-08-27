@@ -62,9 +62,32 @@ defmodule Worker do
   end
 
   @impl true
-  def terminate(reason, %{step_context: context} = _state) do
-    reason |> IO.inspect(label: "#{__MODULE__} 64")
-    context |> IO.inspect(label: "#{__MODULE__} 65")
+  def terminate(
+        {err,
+         [{which_module, which_function, _arity, [file: _filename, line: _line_num]} | _rest] =
+           _stacktrace} = _reason,
+        %{symbol: symbol} = _state
+      ) do
+    worker_leader_pid = Process.whereis(:"Elixir.Worker.Leader_#{symbol}")
+
+    case err do
+      {:badmatch, {:err, step_output}} ->
+        Logger.warn("step error in #{which_module}.#{which_function}: #{step_output}")
+
+        send(
+          worker_leader_pid,
+          {:worker_step_error,
+           %{
+             which_module: which_module,
+             which_function: which_function,
+             step_output: step_output
+           }}
+        )
+
+      unknow_error ->
+        Logger.error("unknow error #{IO.inspect(unknow_error)}")
+    end
+
     :normal
   end
 
