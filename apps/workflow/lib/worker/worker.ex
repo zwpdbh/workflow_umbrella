@@ -8,6 +8,7 @@ defmodule Worker do
               name: nil,
               status: :ready,
               report_to: nil,
+              # history is a list of tuples {which_function, which_module, error_message}
               history: [],
               step_context: %{}
   end
@@ -51,7 +52,7 @@ defmodule Worker do
       )
 
     updated_context = Map.merge(context, new_context)
-    updated_history = [{module_name, fun_name} | history]
+    updated_history = [{module_name, fun_name, nil} | history]
     updated_state = %{state | step_context: updated_context, history: updated_history}
 
     {:noreply, updated_state}
@@ -67,13 +68,15 @@ defmodule Worker do
         {err,
          [{which_module, which_function, _arity, [file: _filename, line: _line_num]} | _rest] =
            _stacktrace} = _reason,
-        %{symbol: symbol} = state
+        %{symbol: symbol, history: history} = state
       ) do
     worker_leader_pid = Process.whereis(Worker.Leader.get_leader_from_symbol(symbol))
 
     case err do
       {:badmatch, {:err, step_output}} ->
         Logger.warn("step error in #{which_module}.#{which_function}: #{step_output}")
+
+        # Don't forget to update failed step into history
 
         send(
           worker_leader_pid,
@@ -82,7 +85,10 @@ defmodule Worker do
              which_module: which_module,
              which_function: which_function,
              step_output: step_output,
-             worker_state: state
+             worker_state: %{
+               state
+               | history: [{which_module, which_function, step_output} | history]
+             }
            }}
         )
 
@@ -97,7 +103,7 @@ defmodule Worker do
     GenServer.cast(pid, {:run_step, module, step})
   end
 
-  def current_state(worker_pid) do
+  def worker_state(worker_pid) do
     GenServer.call(worker_pid, {:current_state})
   end
 end

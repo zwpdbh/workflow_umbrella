@@ -151,7 +151,7 @@ defmodule Worker.Leader do
     end
   end
 
-  def get_leader_state(symbol) do
+  def leader_state(symbol) do
     worker_leader_pid = Process.whereis(:"Elixir.Worker.Leader_#{symbol}")
 
     case worker_leader_pid do
