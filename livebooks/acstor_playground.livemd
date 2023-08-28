@@ -160,6 +160,12 @@ Worker.run_step(%{
 end)
 ```
 
+Currently, there is one problem: when we send a workflow to a worker to execute. It execute each step async from the client point of view. But in the worker's server process, it execute them in sync.
+
+If some operation takes a lot of time to finish. There is no way to check the worker's state using `GenServer.Call`.
+
+That may suggest to move the check worker status's responsibility into `Worker.Leader`.
+
 <!-- livebook:{"branch_parent_index":4} -->
 
 ## Test 4: execute one step with error
