@@ -109,12 +109,21 @@ Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 Workflow.stop_scenario(symbol)
 ```
 
+```elixir
+Worker.Leader.get_leader_state(symbol)
+```
+
 <!-- livebook:{"branch_parent_index":4} -->
 
 ## Test 02: execute one step from worker
 
 ```elixir
 {:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+```
+
+```elixir
+# check worker context
+Worker.current_state(worker_pid)
 ```
 
 ```elixir
@@ -131,11 +140,6 @@ Worker.run_step(%{
   module_name: "Steps.Acstor.Replication",
   step_name: "az_set_subscription"
 })
-```
-
-```elixir
-# check worker context
-Worker.current_state(worker_pid)
 ```
 
 <!-- livebook:{"branch_parent_index":4} -->
@@ -212,3 +216,11 @@ State: %Worker.State{symbol: "azure_disk_replication", status: :ready, report_to
 <!-- livebook:{"break_markdown":true} -->
 
 So, we need to save our state to leader in the callback.
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Tmp
+
+```elixir
+Worker.child_spec(%{})
+```

@@ -30,7 +30,14 @@ defmodule Worker.Leader do
       |> Enum.reduce(
         workers,
         fn index, acc ->
-          Map.put(acc, "worker#{index}", start_new_worker(worker_state))
+          {:ok, worker_pid} =
+            Map.merge(worker_state, %{name: "worker#{index}"}) |> start_new_worker()
+
+          Map.put(
+            acc,
+            "worker#{index}",
+            worker_pid
+          )
         end
       )
 
@@ -60,55 +67,76 @@ defmodule Worker.Leader do
     )
   end
 
-  def start_new_worker(%Worker.State{symbol: symbol} = state) do
+  def start_new_worker(%Worker.State{symbol: symbol} = worker_state) do
+    # Start worker
     DynamicSupervisor.start_child(
-      :"DynamicWorkerSupervisor_#{symbol}",
-      {Worker, state}
+      SymbolSupervisor.get_dynamic_worker_supervisor(symbol),
+      Worker.child_spec(worker_state)
     )
+
+    # Option 2
+    # DynamicSupervisor.start_child(
+    #     SymbolSupervisor.get_dynamic_worker_supervisor(symbol),
+    #     {Worker, state}
+    #   )
   end
 
-  # @impl true
-  # def handle_call({:execute_workflows, workflows}, _pid, %{workflows: current_workflows} = state) do
-  #   updated_workflows = config_workflows(workflows) ++ current_workflows
+  # Callback for restart failed worker due to some error when run a step.
+  @impl true
+  def handle_info(
+        {:worker_step_error,
+         %{
+           which_module: which_module,
+           which_function: which_function,
+           step_output: step_output,
+           worker_state: %{name: worker_name} = worker_state
+         } = _error_context},
+        %{symbol: symbol, workers: workers} = state
+      ) do
+    Logger.debug(
+      "restart worker due to step error in #{which_module}.#{which_function}: #{step_output} for symbol: #{symbol}"
+    )
 
-  #   # After Leader got new workflows, how to envoke workers?
-  #   # Some workers are ready but got no workflows.
-  #   # TODO:
-  #   # We could ask each worker to report themselves.
+    {:ok, new_worker_pid} = start_new_worker(worker_state)
 
-  #   {:reply, {:ok, workflows |> length}, %{state | workflows: updated_workflows}}
-  # end
+    # update the worker name -- worker pid register
+    updated_workers = Map.put(workers, worker_name, new_worker_pid)
+    {:noreply, %{state | workers: updated_workers}}
+  end
 
-  # defp config_workflows(workflows) do
-  #   workflows
-  #   |> Enum.map(fn each -> %{steps: each, id: UUID.uuid1(), status: :not_start_yet} end)
-  # end
-
+  # Callback for get a worker's pid using a name.
   @impl true
   def handle_call({:get_worker_by_name, worker_name}, _from, %{workers: workers} = state) do
     case Map.get(workers, worker_name, nil) do
-      nil -> {:reply, {:err, "worker #{worker_name}not exist"}, state}
-      {:ok, worker_pid} -> {:reply, {:ok, worker_pid}, state}
+      nil ->
+        {:reply, {:err, "worker #{worker_name} not exist"}, state}
+
+      worker_pid ->
+        if Process.alive?(worker_pid) do
+          {:reply, {:ok, worker_pid}, state}
+        else
+          {:reply, {:err, "pid for worker #{worker_name} not alive"}, state}
+        end
     end
   end
 
-  # @impl true
-  # def handle_call({:workflow_is_finished, workflow_id}, worker_pid, state) do
-  #   Logger.info("Worker #{inspect(worker_pid)} finished workflow: #{workflow_id}")
-  #   {:reply, :ok, state}
-  # end
+  @impl true
+  def handle_call({:leader_state}, _from, state) do
+    {:reply, state, state}
+  end
 
-  # @impl true
-  # def handle_call({:workflow_status}, _from, %{workflows: workflows} = state) do
-  #   {:reply, {:ok, workflows}, state}
-  # end
-
+  # Callback which indicate some worker is ready
   @impl true
   def handle_cast({:worker_is_ready, some_worker}, %{} = state) do
     Logger.info("Worker #{inspect(some_worker)} is ready")
 
     # GenServer.cast(some_worker, {:process_workflow, workflow})
     {:noreply, state}
+  end
+
+  # Interface functions
+  def get_leader_from_symbol(symbol) do
+    :"Elixir.Worker.Leader_#{symbol}"
   end
 
   def get_worker_by_name(symbol, worker_name) do
@@ -123,36 +151,15 @@ defmodule Worker.Leader do
     end
   end
 
-  @impl true
-  def handle_info({:worker_step_error, error_context}, state) do
-    # TODO
-    Logger.debug(
-      "TODO how to restart a failed worker from failed step: #{Jason.encode!(error_context)}"
-    )
+  def get_leader_state(symbol) do
+    worker_leader_pid = Process.whereis(:"Elixir.Worker.Leader_#{symbol}")
 
-    {:noreply, state}
+    case worker_leader_pid do
+      nil ->
+        Logger.error("There is no Worker.Leader for scenario: #{symbol}")
+
+      pid ->
+        GenServer.call(pid, {:leader_state})
+    end
   end
-
-  # @impl true
-  # def handle_cast(
-  #       {:worker_is_ready, some_worker},
-  #       %{workflows: [%{id: workflow_id} = workflow | rest]} = state
-  #     ) do
-  #   Logger.info("Worker #{inspect(some_worker)} is ready, assign workflow #{workflow_id} to it")
-
-  #   GenServer.cast(some_worker, {:process_workflow, workflow})
-  #   {:noreply, %{state | workflows: rest}}
-  # end
-
-  # def workflow_status(symbol) do
-  #   worker_leader_pid = Process.whereis(:"Elixir.Worker.Leader_#{symbol}")
-
-  #   case worker_leader_pid do
-  #     nil ->
-  #       Logger.error("There is no Worker.Leader for scenario: #{symbol}")
-
-  #     pid ->
-  #       GenServer.call(pid, {:workflow_status})
-  #   end
-  # end
 end

@@ -5,6 +5,7 @@ defmodule Worker do
   defmodule State do
     @enforce_keys [:symbol, :status, :report_to]
     defstruct symbol: nil,
+              name: nil,
               status: :ready,
               report_to: nil,
               history: [],
@@ -66,9 +67,9 @@ defmodule Worker do
         {err,
          [{which_module, which_function, _arity, [file: _filename, line: _line_num]} | _rest] =
            _stacktrace} = _reason,
-        %{symbol: symbol} = _state
+        %{symbol: symbol} = state
       ) do
-    worker_leader_pid = Process.whereis(:"Elixir.Worker.Leader_#{symbol}")
+    worker_leader_pid = Process.whereis(Worker.Leader.get_leader_from_symbol(symbol))
 
     case err do
       {:badmatch, {:err, step_output}} ->
@@ -80,7 +81,8 @@ defmodule Worker do
            %{
              which_module: which_module,
              which_function: which_function,
-             step_output: step_output
+             step_output: step_output,
+             worker_state: state
            }}
         )
 
