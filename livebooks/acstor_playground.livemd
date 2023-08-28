@@ -119,20 +119,16 @@ Worker.Leader.leader_state(symbol)
 
 ```elixir
 {:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
-```
 
-```elixir
-Process.alive?(worker_pid)
-```
-
-```elixir
-# check worker context
-Worker.worker_state(worker_pid)
+if Process.alive?(worker_pid) do
+  # check worker context
+  Worker.worker_state(worker_pid)
+end
 ```
 
 <!-- livebook:{"branch_parent_index":4} -->
 
-## Test 2: execute step
+## Test 2: execute steps from Replication
 
 ```elixir
 {:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
@@ -146,39 +142,7 @@ Worker.run_step(%{
 
 <!-- livebook:{"branch_parent_index":4} -->
 
-## Test 2.1 : execute one step from worker
-
-```elixir
-{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
-```
-
-```elixir
-Worker.run_step(%{
-  worker_pid: worker_pid,
-  module_name: "Steps.Acstor.Replication",
-  step_name: "az_login_using_sp"
-})
-```
-
-```elixir
-Worker.run_step(%{
-  worker_pid: worker_pid,
-  module_name: "Steps.Acstor.Replication",
-  step_name: "az_set_subscription"
-})
-```
-
-```elixir
-Worker.run_step(%{
-  worker_pid: worker_pid,
-  module_name: "Steps.Acstor.Replication",
-  step_name: "az_create_resource_group"
-})
-```
-
-<!-- livebook:{"branch_parent_index":4} -->
-
-## Test 2.2: execute one step with error
+## Test 3: execute one step with error
 
 ```elixir
 {:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
@@ -268,7 +232,5 @@ tz = Timex.Timezone.get("Asia/Shanghai")
 ```
 
 ```elixir
-NaiveDateTime.utc_now()
-|> DateTime.from_naive!("Etc/UTC")
-|> DateTime.shift_zone(local_time_zone)
+"acstorreplicationtestbyzhaowei_ue9qdx" |> String.length()
 ```

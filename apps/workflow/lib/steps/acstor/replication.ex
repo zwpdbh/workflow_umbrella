@@ -91,7 +91,7 @@ defmodule Steps.Acstor.Replication do
         session_dir: session_dir,
         log_file: log_file
       }) do
-    rg = "#{common_prefix}_#{random_suffix}"
+    rg = "#{common_prefix}-#{random_suffix}"
 
     {:ok, _output} =
       Exec.run(%{
@@ -106,21 +106,18 @@ defmodule Steps.Acstor.Replication do
   # Step 4: create aks cluster
   def az_create_aks_cluster(%{
         rg: rg,
-        suffix: suffix,
         session_dir: session_dir,
         log_file: log_file
       }) do
-    cluster_name = "acstor_#{suffix}"
-
     {:ok, _output} =
       Exec.run(%{
         cmd:
-          "az aks create -n #{cluster_name} -g #{rg} --generate-ssh-keys --attach-acr /subscriptions/d64ddb0c-7399-4529-a2b6-037b33265372/resourceGroups/azstor-test-rg/providers/Microsoft.ContainerRegistry/registries/azstortest",
+          "az aks create -n #{rg} -g #{rg} --generate-ssh-keys --attach-acr /subscriptions/d64ddb0c-7399-4529-a2b6-037b33265372/resourceGroups/azstor-test-rg/providers/Microsoft.ContainerRegistry/registries/azstortest",
         log_file: log_file,
         env: [{"AZURE_CONFIG_DIR", session_dir}]
       })
 
-    %{aks: cluster_name}
+    %{aks: rg}
   end
 
   # For testing only to test how to handle a step failed
