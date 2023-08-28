@@ -140,9 +140,29 @@ Worker.run_step(%{
 })
 ```
 
+## Test 3: execute workflows from Replication
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+[
+  "az_login_using_sp",
+  "az_set_subscription",
+  "az_create_resource_group",
+  "az_create_aks_cluster"
+]
+|> Enum.each(fn each_step ->
+  Worker.run_step(%{
+    worker_pid: worker_pid,
+    module_name: "Steps.Acstor.Replication",
+    step_name: each_step
+  })
+end)
+```
+
 <!-- livebook:{"branch_parent_index":4} -->
 
-## Test 3: execute one step with error
+## Test 4: execute one step with error
 
 ```elixir
 {:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")

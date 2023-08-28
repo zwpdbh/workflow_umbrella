@@ -15,7 +15,7 @@ defmodule Steps.Acstor.Replication do
       sub: "33922553-c28a-4d50-ac93-a5c682692168",
       region: "eastus",
       suffix: random_suffix,
-      prefix: "acstorreplicationtestbyzhaowei",
+      prefix: "acstorbyzhaowei",
       session_dir: session_dir,
       log_file: log_file
     }
