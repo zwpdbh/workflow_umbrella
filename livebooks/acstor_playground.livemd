@@ -115,7 +115,7 @@ Worker.Leader.leader_state(symbol)
 
 <!-- livebook:{"branch_parent_index":4} -->
 
-## Test 1.2 Find the worker
+## Test 1.2 Check the worker state
 
 ```elixir
 {:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")

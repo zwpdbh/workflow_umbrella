@@ -12,7 +12,7 @@ defmodule Steps.Acstor.Replication do
     log_file = Path.join([session_dir, "log.txt"])
 
     %{
-      sub: "33922553-c28a-4d50-ac93-a5c682692168",
+      sub: "d20d4862-d44e-429d-bcd7-fe71a331a8b8",
       region: "eastus",
       suffix: random_suffix,
       prefix: "acstorbyzhaowei",
