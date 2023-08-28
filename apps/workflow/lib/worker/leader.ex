@@ -104,6 +104,11 @@ defmodule Worker.Leader do
     {:noreply, %{state | workers: updated_workers}}
   end
 
+  # @impl true
+  # def handle_info({:worker_in_progress, module_name, fun_name, "in_progress", nil}, state) do
+
+  # end
+
   # Callback for get a worker's pid using a name.
   @impl true
   def handle_call({:get_worker_by_name, worker_name}, _from, %{workers: workers} = state) do
@@ -135,8 +140,13 @@ defmodule Worker.Leader do
   end
 
   # Interface functions
-  def get_leader_from_symbol(symbol) do
-    :"Elixir.Worker.Leader_#{symbol}"
+  def get_leader_pid_from_symbol(symbol) do
+    worker_leader_pid = Process.whereis(:"Elixir.Worker.Leader_#{symbol}")
+
+    case Process.alive?(worker_leader_pid) do
+      true -> {:ok, worker_leader_pid}
+      false -> {:err, "#{inspect(worker_leader_pid)} not alive"}
+    end
   end
 
   def get_worker_by_name(symbol, worker_name) do

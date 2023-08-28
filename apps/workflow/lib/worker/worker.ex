@@ -44,6 +44,19 @@ defmodule Worker do
         {:run_step, module_name, fun_name},
         %State{step_context: context, history: history} = state
       ) do
+    # We need to update to leader that we are running some step because the internal state will be blocked in current process.
+    # If some step takes a lot of time to execute, we need to update let leader know how this.
+
+    # (TODO) maybe we just need to keep a "in_progress" table in leader ?
+    # {:ok, worker_leader_pid} = get_leader_pid_from_symbol(symbol)
+
+    # send(
+    #   worker_leader_pid,
+    #   {:worker_in_progress, %{state | history: {}}}
+    # )
+
+    # if the execution of step has no error, we update context and history
+    # if there is error, the terminate callback will handle
     new_context =
       apply(
         String.to_existing_atom("Elixir.#{module_name}"),
@@ -52,7 +65,7 @@ defmodule Worker do
       )
 
     updated_context = Map.merge(context, new_context)
-    updated_history = [{module_name, fun_name, nil} | history]
+    updated_history = [{module_name, fun_name, "succeed", nil} | history]
     updated_state = %{state | step_context: updated_context, history: updated_history}
 
     {:noreply, updated_state}
@@ -70,7 +83,7 @@ defmodule Worker do
            _stacktrace} = _reason,
         %{symbol: symbol, history: history} = state
       ) do
-    worker_leader_pid = Process.whereis(Worker.Leader.get_leader_from_symbol(symbol))
+    {:ok, worker_leader_pid} = Worker.Leader.get_leader_pid_from_symbol(symbol)
 
     case err do
       {:badmatch, {:err, step_output}} ->
@@ -87,7 +100,7 @@ defmodule Worker do
              step_output: step_output,
              worker_state: %{
                state
-               | history: [{which_module, which_function, step_output} | history]
+               | history: [{which_module, which_function, "failed", step_output} | history]
              }
            }}
         )
