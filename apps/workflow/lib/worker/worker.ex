@@ -7,13 +7,13 @@ defmodule Worker do
     defstruct symbol: nil,
               status: :ready,
               report_to: nil,
-              current_step: nil,
-              workload_history: [],
-              context: %{}
+              history: [],
+              step_context: %{}
   end
 
   @doc """
   This function is needed because we create worker dynamically via "DynamicSupervisor.start_child"
+  Notice: we shall never name a process if it is created dynamically.
   """
   def start_link(%State{} = state) do
     GenServer.start_link(__MODULE__, state)
@@ -28,70 +28,74 @@ defmodule Worker do
 
   @impl true
   def handle_continue(:ask_task, %State{report_to: leader} = state) do
-    # The place to fully initialize worker before doing task
-
-    # # Notice leader that I am ready
+    # (TODO)The place to fully initialize worker before doing task
+    # Notice leader that I am ready
     GenServer.cast(leader, {:worker_is_ready, self()})
 
-    # GenServer.call(leader, %{msg: :ready})
-    # send(leader, {who: self(), msg: :ready})
-
     {:noreply, state}
   end
 
-  # # Process workflow
-  # def handle_info(
-  #       %{workflow_id: _workflow_id, workflow_parameters: _workflow_parameters},
-  #       %State{context: _context} = state
-  #     ) do
-  #   # fetch workflow definition
-  #   # execute workflow using workflow_parameters + context
-  #   {:noreply, state}
-  # end
-
+  # The worker is not aware of the concept of workflow.
+  # The worker just execute a function assigned to it using context it current holds
   @impl true
   def handle_cast(
-        {:process_workflow, %{steps: workflow_steps, id: workflow_id} = workflow},
-        state
+        {:run_step, module_name, fun_name},
+        %State{step_context: context, history: history} = state
       ) do
-    Logger.info(
-      "Assigned workflow #{workflow_id}, there are #{workflow_steps |> length} steps to do"
-    )
+    new_context =
+      apply(
+        String.to_existing_atom("Elixir.#{module_name}"),
+        String.to_existing_atom("#{fun_name}"),
+        [context]
+      )
 
-    # We process workflow by keep send ourself messages.
-    # https://hexdocs.pm/elixir/GenServer.html#module-receiving-regular-messages
+    updated_context = Map.merge(context, new_context)
+    updated_history = [{module_name, fun_name} | history]
+    updated_state = %{state | step_context: updated_context, history: updated_history}
 
-    send(self(), {:run_workflow, workflow})
-    {:noreply, state}
-  end
-
-  # Callback for runing workflow which its steps is empty.
-  # We should stop the worker and let leader restart it.
-  @impl true
-  def handle_info(
-        {:run_workflow, %{steps: [], id: workflow_id}},
-        %State{report_to: leader} = state
-      ) do
-    Logger.info("There is no more steps to execute in workflow #{workflow_id}, exit...")
-    GenServer.call(leader, {:workflow_is_finished})
-
-    {:stop, :normal, state}
-  end
-
-  # Callback for running workflow
-  # It runs workflow by running a step from the workflow recursively.
-  @impl true
-  def handle_info(
-        {:run_workflow, [step | rest]},
-        %State{workload_history: workload_history} = state
-      ) do
-    Logger.info("Execute step: #{{inspect(step)}}")
-    Logger.info("Update state")
-
-    updated_history = [step | workload_history]
-    updated_state = Map.put(state, :workload_history, updated_history)
-
-    send(self(), {:run_workflow, [rest]})
     {:noreply, updated_state}
+  end
+
+  @impl true
+  def handle_call({:current_state}, _from, state) do
+    {:reply, state, state}
+  end
+
+  @impl true
+  def terminate(
+        {err,
+         [{which_module, which_function, _arity, [file: _filename, line: _line_num]} | _rest] =
+           _stacktrace} = _reason,
+        %{symbol: symbol} = _state
+      ) do
+    worker_leader_pid = Process.whereis(:"Elixir.Worker.Leader_#{symbol}")
+
+    case err do
+      {:badmatch, {:err, step_output}} ->
+        Logger.warn("step error in #{which_module}.#{which_function}: #{step_output}")
+
+        send(
+          worker_leader_pid,
+          {:worker_step_error,
+           %{
+             which_module: which_module,
+             which_function: which_function,
+             step_output: step_output
+           }}
+        )
+
+      unknow_error ->
+        Logger.error("unknow error #{IO.inspect(unknow_error)}")
+    end
+
+    :normal
+  end
+
+  def run_step(%{worker_pid: pid, module_name: module, step_name: step}) do
+    GenServer.cast(pid, {:run_step, module, step})
+  end
+
+  def current_state(worker_pid) do
+    GenServer.call(worker_pid, {:current_state})
   end
 end

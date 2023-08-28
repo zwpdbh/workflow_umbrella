@@ -1,5 +1,5 @@
 defmodule Payload.SimpleSteps do
-  def simple_add(n) do
+  def simple_add(%{n: n}) do
     n + 100
   end
 
