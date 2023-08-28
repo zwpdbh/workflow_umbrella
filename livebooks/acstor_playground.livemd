@@ -93,7 +93,7 @@ symbol = "azure_disk_replication"
 
 <!-- livebook:{"branch_parent_index":4} -->
 
-## Test 01: start scenario
+## Test 1.1: start scenario
 
 ```elixir
 # Start a scenario
@@ -115,15 +115,41 @@ Worker.Leader.leader_state(symbol)
 
 <!-- livebook:{"branch_parent_index":4} -->
 
-## Test 02: execute one step from worker
+## Test 1.2 Find the worker
 
 ```elixir
 {:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
 ```
 
 ```elixir
+Process.alive?(worker_pid)
+```
+
+```elixir
 # check worker context
 Worker.worker_state(worker_pid)
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Test 2: execute step
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+Worker.run_step(%{
+  worker_pid: worker_pid,
+  module_name: "Steps.Acstor.Replication",
+  step_name: "az_create_aks_cluster"
+})
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Test 2.1 : execute one step from worker
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
 ```
 
 ```elixir
@@ -142,9 +168,17 @@ Worker.run_step(%{
 })
 ```
 
+```elixir
+Worker.run_step(%{
+  worker_pid: worker_pid,
+  module_name: "Steps.Acstor.Replication",
+  step_name: "az_create_resource_group"
+})
+```
+
 <!-- livebook:{"branch_parent_index":4} -->
 
-## Test 03: execute one step with error
+## Test 2.2: execute one step with error
 
 ```elixir
 {:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
@@ -222,5 +256,19 @@ So, we need to save our state to leader in the callback.
 ## Tmp
 
 ```elixir
-Worker.child_spec(%{})
+local_time_zone = Timex.Timezone.local()
+```
+
+```elixir
+Timex.Timezone.local() |> Timex.Timezone.name_of()
+```
+
+```elixir
+tz = Timex.Timezone.get("Asia/Shanghai")
+```
+
+```elixir
+NaiveDateTime.utc_now()
+|> DateTime.from_naive!("Etc/UTC")
+|> DateTime.shift_zone(local_time_zone)
 ```

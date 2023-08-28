@@ -37,7 +37,22 @@ defmodule Steps.Exec do
   # And return the output
   defp run_aux(%{cmd: cmd_str, log_file: log_file, env: env_settings}) do
     Logger.info("#{cmd_str}")
-    Steps.LogBackend.log_to_file(%{log_file: log_file, content: "$#{cmd_str}"})
+
+    local_tz_info = Timex.Timezone.local()
+
+    {:ok, dt} =
+      Timex.Timezone.local()
+      |> Timex.Timezone.name_of()
+      |> Steps.Common.Time.get_current_datetime()
+
+    timestamp_str =
+      "#{inspect(local_tz_info)} [#{dt.year}-#{dt.month}-#{dt.day} #{dt.hour}:#{dt.minute}:#{dt.second}]"
+
+    # also record the command we executed into log file
+    Steps.LogBackend.log_to_file(%{
+      log_file: log_file,
+      content: "#{timestamp_str} $#{cmd_str}"
+    })
 
     {output, status} =
       case env_settings do
