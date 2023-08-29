@@ -118,13 +118,20 @@ Worker.Leader.leader_state(symbol)
 Add one workflow definition for a symbol
 
 ```elixir
+workflow_definition =
+  [
+    "az_login_using_sp",
+    "az_set_subscription",
+    "az_create_resource_group",
+    "az_create_aks_cluster"
+  ]
+  |> Enum.map(fn each -> {"Steps.Acstor.Replication", each} end)
+```
+
+```elixir
 %{
   symbol: symbol,
-  workflow_definition: [
-    {"Steps.Acstor.Replication", "az_login_using_sp"},
-    {"Steps.Acstor.Replication", "dummy_step_will_fail"},
-    {"Steps.Acstor.Replication", "az_set_subscription"}
-  ]
+  workflow_definition: workflow_definition
 }
 |> Worker.Leader.add_workflow_for_symbol()
 ```
@@ -138,6 +145,19 @@ Worker.Leader.schedule_workflows(symbol)
 Trigger Leader to let each worker to run a step from its assigned workflow
 
 ```elixir
+Worker.Leader.execute_workflows_for_symbol(symbol)
+```
+
+If there is one worker, then we could test one step by simply schedule a workload containing one step
+
+```elixir
+%{
+  symbol: symbol,
+  workflow_definition: [{"Steps.Acstor.Replication", "az_login_using_sp"}]
+}
+|> Worker.Leader.add_workflow_for_symbol()
+
+Worker.Leader.schedule_workflows(symbol)
 Worker.Leader.execute_workflows_for_symbol(symbol)
 ```
 
