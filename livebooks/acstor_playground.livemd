@@ -113,6 +113,21 @@ Workflow.stop_scenario(symbol)
 Worker.Leader.leader_state(symbol)
 ```
 
+```elixir
+%{
+  symbol: symbol,
+  workflow_definition: [
+    {"Steps.Acstor.Replication", "az_login_using_sp"},
+    {"Steps.Acstor.Replication", "az_set_subscription"}
+  ]
+}
+|> Worker.Leader.add_workflow_for_symbol()
+```
+
+```elixir
+[1, 2] ++ [2, 3]
+```
+
 <!-- livebook:{"branch_parent_index":4} -->
 
 ## Test 1.2 Check the worker state
@@ -259,4 +274,8 @@ tz = Timex.Timezone.get("Asia/Shanghai")
 
 ```elixir
 "acstorreplicationtestbyzhaowei_ue9qdx" |> String.length()
+```
+
+```elixir
+Ecto.UUID.generate()
 ```

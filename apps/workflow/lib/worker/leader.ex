@@ -7,9 +7,9 @@ defmodule Worker.Leader do
               settings: nil,
               # worker_registry contains the mapping (k, v) where k is the worker_name, v is the worker_pid
               worker_registry: %{},
-              # worker_jobs contains the mapping (k, v)
-              # where k is the worker_name, v is the list of steps to be execute
-              worker_jobs: %{}
+              workflows_in_progress: %{},
+              workflows_todo: [],
+              workflows_finished: []
   end
 
   def start_link(symbol) do
@@ -138,6 +138,11 @@ defmodule Worker.Leader do
     {:reply, state, state}
   end
 
+  @impl true
+  def handle_call({:add_workflows, workflows}, _from, %{workflows_todo: workflows_todo} = state) do
+    {:reply, workflows, %{state | workflows_todo: [workflows] ++ workflows_todo}}
+  end
+
   # Callback which indicate some worker is ready
   @impl true
   def handle_cast({:worker_is_ready, some_worker}, %{} = state) do
@@ -170,14 +175,35 @@ defmodule Worker.Leader do
   end
 
   def leader_state(symbol) do
-    worker_leader_pid = Process.whereis(:"Elixir.Worker.Leader_#{symbol}")
+    GenServer.call(:"#{__MODULE__}_#{symbol}", {:leader_state})
+  end
 
-    case worker_leader_pid do
-      nil ->
-        Logger.error("There is no Worker.Leader for scenario: #{symbol}")
+  def add_workflows_for_symbol(%{symbol: symbol, workflows_definition: workflows_definition})
+      when is_list(workflows_definition) do
+    workflows =
+      workflows_definition
+      |> Enum.map(fn each_workflow_definition ->
+        workflow_id = Ecto.UUID.generate()
+        steps = generate_steps(each_workflow_definition)
 
-      pid ->
-        GenServer.call(pid, {:leader_state})
-    end
+        %{workflow_id: workflow_id, steps: steps}
+      end)
+
+    GenServer.call(:"#{__MODULE__}_#{symbol}", {:add_workflows, workflows})
+  end
+
+  def add_workflow_for_symbol(%{symbol: symbol, workflow_definition: workflow}) do
+    add_workflows_for_symbol(%{symbol: symbol, workflows_definition: [workflow]})
+  end
+
+  def generate_steps(workflow_definition) when is_list(workflow_definition) do
+    workflow_definition
+    |> Enum.map(fn {which_module, which_function} ->
+      %{
+        step_id: Ecto.UUID.generate(),
+        which_module: which_module,
+        which_function: which_function
+      }
+    end)
   end
 end
