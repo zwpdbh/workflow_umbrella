@@ -127,19 +127,108 @@ defmodule Worker.Leader do
            which_module: which_module,
            which_function: which_function,
            step_output: step_output,
-           worker_state: %{name: worker_name} = worker_state
+           worker_pid: worker_pid,
+           worker_state: worker_state
          } = _error_context},
-        %{symbol: symbol, worker_registry: worker_registry} = state
+        %{
+          symbol: symbol,
+          worker_registry: worker_registry,
+          workflows_in_progress: workflows_in_progress
+        } = state
       ) do
     Logger.debug(
       "restart worker due to step error in #{which_module}.#{which_function}: #{step_output} for symbol: #{symbol}"
     )
 
+    # Find the corresponding workflow by first find the name
+    {worker_name, _worker_pid} =
+      worker_registry
+      |> Enum.find(fn {_worker_name, pid} -> worker_pid == pid end)
+
+    %{steps: steps} = workflow = Map.get(workflows_in_progress, worker_name)
+
+    step_index =
+      steps |> Enum.find_index(fn %{step_status: status} -> status == "in_progress" end)
+
+    updated_step =
+      Enum.at(steps, step_index)
+      |> Map.put(:step_status, "failed")
+
+    updated_steps = List.replace_at(steps, step_index, updated_step)
+    updated_workflow = %{workflow | steps: updated_steps}
+    updated_workflows_in_progress = %{workflows_in_progress | worker_name => updated_workflow}
+
     {:ok, new_worker_pid} = start_new_worker(worker_state)
 
     # update the worker name -- worker pid register
     updated_worker_registry = Map.put(worker_registry, worker_name, new_worker_pid)
-    {:noreply, %{state | worker_registry: updated_worker_registry}}
+
+    {:noreply,
+     %{
+       state
+       | worker_registry: updated_worker_registry,
+         workflows_in_progress: updated_workflows_in_progress
+     }}
+  end
+
+  # Callback from worker to notice leader that the step from workflow is finished
+  @impl true
+  def handle_info(
+        {:worker_step_finished,
+         %{
+           worker_pid: worker_pid,
+           worker_name: worker_name,
+           step_index: step_index,
+           step_status: step_status
+         }},
+        %{
+          workflows_in_progress: workflows_in_progress,
+          workflows_finished: workflows_finished,
+          worker_registry: worker_registry
+        } = state
+      ) do
+    # First, verify it is the worker we registered
+    registered_worker_pid = Map.get(worker_registry, worker_name)
+
+    if worker_pid != registered_worker_pid do
+      Logger.warn(
+        "Receive :worker_step_finished from unknow worker: #{inspect(Map.get(worker_registry, worker_name))}, ignored"
+      )
+
+      {:noreply, state}
+    else
+      %{steps: steps} = workflow = workflows_in_progress |> Map.get(worker_name)
+      step_executed = Enum.at(steps, step_index)
+
+      updated_steps =
+        List.replace_at(steps, step_index, %{step_executed | step_status: step_status})
+
+      updated_workflow = %{workflow | steps: updated_steps}
+
+      case all_steps_finished(updated_steps) do
+        true ->
+          updated_workflows_finished = [updated_workflow | workflows_finished]
+          updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, nil)
+
+          {:noreply,
+           %{
+             state
+             | workflows_finished: updated_workflows_finished,
+               workflows_in_progress: updated_workflows_in_progress
+           }}
+
+        false ->
+          updated_workflows_in_progress =
+            Map.put(workflows_in_progress, worker_name, updated_workflow)
+
+          {:noreply, %{state | workflows_in_progress: updated_workflows_in_progress}}
+      end
+    end
+  end
+
+  defp all_steps_finished(steps) do
+    steps
+    |> Enum.all?(fn %{step_status: step_status} -> step_status != "todo" end)
   end
 
   # Callback for get a worker's pid using a name.
@@ -210,47 +299,63 @@ defmodule Worker.Leader do
   def handle_call(
         {:execute_workflows},
         _from,
-        %{workflows_in_progress: workflows_in_progress, worker_registry: worker_registry} = state
+        %{
+          workflows_in_progress: workflows_in_progress,
+          worker_registry: worker_registry
+        } = state
       ) do
     # For each worker and its current workflow, run the next step which has status_todo
 
     updated_workflows_in_progress =
       workflows_in_progress
       |> Enum.map(fn {worker_name, %{steps: steps, workflow_id: workflow_id}} ->
-        worker_pid = Map.get(worker_registry, worker_name)
-
-        %{
-          which_module: which_module,
-          which_function: which_function,
-          step_index: step_index,
-          step_status: step_status
-        } = next_todo_step = find_next_todo_step(steps)
-
-        case step_status do
-          "todo" ->
-            Worker.run_step(%{
-              worker_pid: worker_pid,
-              module_name: which_module,
-              step_name: which_function
-            })
-
-            updated_steps =
-              List.replace_at(steps, step_index, %{next_todo_step | step_status: "in_progress"})
-
-            {worker_name, %{steps: updated_steps, workflow_id: workflow_id}}
-
-          "in_progress" ->
-            {worker_name, %{steps: steps, workflow_id: workflow_id}}
-        end
+        execute_workflows_aux(worker_registry, worker_name, workflow_id, steps)
       end)
+      |> Map.new()
+
+    updated_workflows_in_progress |> IO.inspect(label: "#{__MODULE__} 316")
 
     {:reply, updated_workflows_in_progress,
      %{state | workflows_in_progress: updated_workflows_in_progress}}
   end
 
+  defp execute_workflows_aux(worker_registry, worker_name, workflow_id, steps) do
+    worker_pid = Map.get(worker_registry, worker_name)
+
+    %{
+      which_module: which_module,
+      which_function: which_function,
+      step_index: step_index,
+      step_status: step_status,
+      step_id: step_id
+    } = next_todo_step = find_next_todo_step(steps)
+
+    case step_status do
+      x when x in ["todo", "failed"] ->
+        Worker.run_step_with_id(%{
+          worker_pid: worker_pid,
+          worker_name: worker_name,
+          which_module: which_module,
+          which_function: which_function,
+          step_index: step_index,
+          step_id: step_id
+        })
+
+        updated_steps =
+          List.replace_at(steps, step_index, %{next_todo_step | step_status: "in_progress"})
+
+        {worker_name, %{steps: updated_steps, workflow_id: workflow_id}}
+
+      "in_progress" ->
+        {worker_name, %{steps: steps, workflow_id: workflow_id}}
+    end
+  end
+
   defp find_next_todo_step(steps) do
     steps
-    |> Enum.find(fn %{step_status: status} -> status == "todo" or status == "in_progress" end)
+    |> Enum.find(fn %{step_status: status} ->
+      status == "todo" or status == "in_progress" or status == "failed"
+    end)
   end
 
   # Callback which indicate some worker is ready

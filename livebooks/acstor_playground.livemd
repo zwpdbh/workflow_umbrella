@@ -122,6 +122,7 @@ Add one workflow definition for a symbol
   symbol: symbol,
   workflow_definition: [
     {"Steps.Acstor.Replication", "az_login_using_sp"},
+    {"Steps.Acstor.Replication", "dummy_step_will_fail"},
     {"Steps.Acstor.Replication", "az_set_subscription"}
   ]
 }
@@ -174,7 +175,8 @@ Worker.run_step(%{
 
 [
   "az_login_using_sp",
-  "az_set_subscription"
+  # "az_set_subscription"
+  "dummy_step_will_fail"
   # "az_create_resource_group"
   # "az_create_aks_cluster"
 ]
@@ -289,6 +291,5 @@ tz = Timex.Timezone.get("Asia/Shanghai")
 ```
 
 ```elixir
-%{"a" => 1, "b" => 2, "c" => 3}
-|> Enum.map(fn {k, _v} -> {k, "aaa"} end)
+self() == self()
 ```
