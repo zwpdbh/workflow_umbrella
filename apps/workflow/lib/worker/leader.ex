@@ -142,11 +142,6 @@ defmodule Worker.Leader do
     {:noreply, %{state | worker_registry: updated_worker_registry}}
   end
 
-  # @impl true
-  # def handle_info({:worker_in_progress, module_name, fun_name, "in_progress", nil}, state) do
-
-  # end
-
   # Callback for get a worker's pid using a name.
   @impl true
   def handle_call(
@@ -175,6 +170,40 @@ defmodule Worker.Leader do
   @impl true
   def handle_call({:add_workflows, workflows}, _from, %{workflows_todo: workflows_todo} = state) do
     {:reply, workflows, %{state | workflows_todo: [workflows] ++ workflows_todo}}
+  end
+
+  # Callback for schedule workflows on available workers
+  @impl true
+  def handle_call(
+        {:schedule_workflows},
+        _from,
+        %{workflows_in_progress: workflows_in_progress, workflows_todo: workflows_todo} = state
+      ) do
+    # Find available workers
+    available_workers =
+      workflows_in_progress
+      |> Map.to_list()
+      |> Enum.filter(fn {_worker_name, workflow} -> workflow == nil end)
+      |> Enum.map(fn {worker_name, nil} -> worker_name end)
+
+    assigned_workers_with_workflows =
+      Enum.zip(available_workers, workflows_todo)
+      |> Enum.reduce(%{}, fn {k, v}, acc -> Map.put(acc, k, v) end)
+
+    # Remove assigned workflows from workflows_todo
+    updated_workflows_todo =
+      workflows_todo |> Enum.drop(map_size(assigned_workers_with_workflows))
+
+    # Merge old one with new one
+    updated_workflows_in_progress =
+      Map.merge(workflows_in_progress, assigned_workers_with_workflows)
+
+    {:reply, assigned_workers_with_workflows,
+     %{
+       state
+       | workflows_todo: updated_workflows_todo,
+         workflows_in_progress: updated_workflows_in_progress
+     }}
   end
 
   # Callback which indicate some worker is ready
@@ -242,5 +271,10 @@ defmodule Worker.Leader do
         which_function: which_function
       }
     end)
+  end
+
+  # An helper function to trigger Leader to run some workflow on some worker
+  def schedule_workflows(symbol) do
+    GenServer.call(:"#{__MODULE__}_#{symbol}", {:schedule_workflows})
   end
 end

@@ -109,9 +109,13 @@ Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 Workflow.start_scenario(symbol)
 ```
 
+Check current leader state
+
 ```elixir
 Worker.Leader.leader_state(symbol)
 ```
+
+Add one workflow definition for a symbol
 
 ```elixir
 %{
@@ -124,8 +128,10 @@ Worker.Leader.leader_state(symbol)
 |> Worker.Leader.add_workflow_for_symbol()
 ```
 
+Schedule workflows in Leader based on its current state
+
 ```elixir
-[1, 2] ++ [2, 3]
+Worker.Leader.schedule_workflows(symbol)
 ```
 
 <!-- livebook:{"branch_parent_index":4} -->
