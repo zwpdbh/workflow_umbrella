@@ -121,11 +121,30 @@ defmodule Steps.Acstor.Replication do
   end
 
   # Step 5: Add node pool
-  # def az_add_node_pool(%{aks: aks, rg: rg, vm}) do
-  #   # Add node pool with 3 nodes
-  #   "az aks nodepool add --cluster-name #{aks_cluster} --name storagepool --resource-group #{rg} --node-vm-size #{vm_sku} --node-count 3 "
-  #   |> ExecCmd.run()
-  # end
+  def az_add_node_pool(%{
+        aks: aks,
+        rg: rg,
+        disk_type: disk_type,
+        session_dir: session_dir,
+        log_file: log_file
+      }) do
+    # Add node pool with 3 nodes
+    vm_sku =
+      case disk_type do
+        "azure_disk" -> "Standard_D4s_v3"
+        "nvme" -> "Standard_L8s_v3"
+      end
+
+    {:ok, _output} =
+      Exec.run(%{
+        cmd:
+          "az aks nodepool add --cluster-name #{aks} --name storagepool --resource-group #{rg} --node-vm-size #{vm_sku} --node-count 3 ",
+        session_dir: session_dir,
+        log_file: log_file
+      })
+
+    %{vm_sku: vm_sku}
+  end
 
   # For testing only to test how to handle a step failed
   def dummy_step_will_fail(%{} = _context) do
