@@ -217,24 +217,31 @@ defmodule Worker.Leader do
     updated_workflows_in_progress =
       workflows_in_progress
       |> Enum.map(fn {worker_name, %{steps: steps, workflow_id: workflow_id}} ->
+        worker_pid = Map.get(worker_registry, worker_name)
+
         %{
           which_module: which_module,
           which_function: which_function,
-          step_index: step_index
+          step_index: step_index,
+          step_status: step_status
         } = next_todo_step = find_next_todo_step(steps)
 
-        worker_pid = Map.get(worker_registry, worker_name)
+        case step_status do
+          "todo" ->
+            Worker.run_step(%{
+              worker_pid: worker_pid,
+              module_name: which_module,
+              step_name: which_function
+            })
 
-        Worker.run_step(%{
-          worker_pid: worker_pid,
-          module_name: which_module,
-          step_name: which_function
-        })
+            updated_steps =
+              List.replace_at(steps, step_index, %{next_todo_step | step_status: "in_progress"})
 
-        updated_steps =
-          List.replace_at(steps, step_index, %{next_todo_step | step_status: "in_progress"})
+            {worker_name, %{steps: updated_steps, workflow_id: workflow_id}}
 
-        {worker_name, %{steps: updated_steps, workflow_id: workflow_id}}
+          "in_progress" ->
+            {worker_name, %{steps: steps, workflow_id: workflow_id}}
+        end
       end)
 
     {:reply, updated_workflows_in_progress,
@@ -243,7 +250,7 @@ defmodule Worker.Leader do
 
   defp find_next_todo_step(steps) do
     steps
-    |> Enum.find(fn %{step_status: status} -> status == "todo" end)
+    |> Enum.find(fn %{step_status: status} -> status == "todo" or status == "in_progress" end)
   end
 
   # Callback which indicate some worker is ready
@@ -319,6 +326,7 @@ defmodule Worker.Leader do
   end
 
   # A helper function to trigger each worker to run a todo step from its assigned workflow
+  # It will return update and return the latest workflows_in_progress
   def execute_workflows_for_symbol(symbol) do
     GenServer.call(:"#{__MODULE__}_#{symbol}", {:execute_workflows})
   end
