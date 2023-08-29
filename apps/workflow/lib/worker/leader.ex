@@ -331,7 +331,7 @@ defmodule Worker.Leader do
     } = next_todo_step = find_next_todo_step(steps)
 
     case step_status do
-      "todo" ->
+      x when x in ["todo", "failed"] ->
         Worker.run_step_with_id(%{
           worker_pid: worker_pid,
           worker_name: worker_name,
@@ -353,7 +353,9 @@ defmodule Worker.Leader do
 
   defp find_next_todo_step(steps) do
     steps
-    |> Enum.find(fn %{step_status: status} -> status == "todo" or status == "in_progress" end)
+    |> Enum.find(fn %{step_status: status} ->
+      status == "todo" or status == "in_progress" or status == "failed"
+    end)
   end
 
   # Callback which indicate some worker is ready

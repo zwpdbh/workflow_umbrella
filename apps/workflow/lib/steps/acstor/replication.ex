@@ -122,6 +122,8 @@ defmodule Steps.Acstor.Replication do
 
   # For testing only to test how to handle a step failed
   def dummy_step_will_fail(%{} = _context) do
+    Process.sleep(10_000)
+
     {:ok, _output} =
       Exec.run(%{
         cmd: "ls non_exist_file"
