@@ -169,7 +169,7 @@ defmodule Worker.Leader do
 
   @impl true
   def handle_call({:add_workflows, workflows}, _from, %{workflows_todo: workflows_todo} = state) do
-    {:reply, workflows, %{state | workflows_todo: [workflows] ++ workflows_todo}}
+    {:reply, workflows, %{state | workflows_todo: workflows ++ workflows_todo}}
   end
 
   # Callback for schedule workflows on available workers
@@ -186,13 +186,19 @@ defmodule Worker.Leader do
       |> Enum.filter(fn {_worker_name, workflow} -> workflow == nil end)
       |> Enum.map(fn {worker_name, nil} -> worker_name end)
 
+    available_workers |> IO.inspect(label: "#{__MODULE__} 189")
+
     assigned_workers_with_workflows =
       Enum.zip(available_workers, workflows_todo)
       |> Enum.reduce(%{}, fn {k, v}, acc -> Map.put(acc, k, v) end)
 
+    assigned_workers_with_workflows |> IO.inspect(label: "#{__MODULE__} 195")
+
     # Remove assigned workflows from workflows_todo
     updated_workflows_todo =
       workflows_todo |> Enum.drop(map_size(assigned_workers_with_workflows))
+
+    updated_workflows_todo |> IO.inspect(label: "#{__MODULE__} 201")
 
     # Merge old one with new one
     updated_workflows_in_progress =
@@ -205,6 +211,18 @@ defmodule Worker.Leader do
          workflows_in_progress: updated_workflows_in_progress
      }}
   end
+
+  # @impl true
+  # def handle_call(
+  #       {:execute_workflows},
+  #       _from,
+  #       %{workflows_in_progress: workflows_in_progress} = state
+  #     ) do
+
+  #     workflows_in_progress
+  #     |> Enum.each(fn {})
+  #   {:reply, nil, state}
+  # end
 
   # Callback which indicate some worker is ready
   @impl true
@@ -273,8 +291,13 @@ defmodule Worker.Leader do
     end)
   end
 
-  # An helper function to trigger Leader to run some workflow on some worker
+  # A helper function to trigger Leader to run some workflow on some worker
   def schedule_workflows(symbol) do
     GenServer.call(:"#{__MODULE__}_#{symbol}", {:schedule_workflows})
   end
+
+  # # A helper function to trigger each worker to run a todo step from its assigned workflow
+  # def execute_workflows(symbol) do
+  #   GenServer.call(:"#{__MODULE__}_#{symbol}", {:execute_workflows})
+  # end
 end

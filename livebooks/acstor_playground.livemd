@@ -283,5 +283,6 @@ tz = Timex.Timezone.get("Asia/Shanghai")
 ```
 
 ```elixir
-Ecto.UUID.generate()
+%{"a" => 1, "b" => 2, "c" => 3}
+|> Enum.map(fn {_k, v} -> v end)
 ```
