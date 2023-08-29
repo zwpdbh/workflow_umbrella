@@ -116,6 +116,12 @@ defmodule Worker do
   end
 
   @impl true
+  def handle_call({:add_new_context, new_context}, _from, %{step_context: step_context} = state) do
+    updated_step_context = Map.merge(step_context, new_context)
+    {:reply, updated_step_context, %{state | step_context: updated_step_context}}
+  end
+
+  @impl true
   def terminate(
         {err,
          [{which_module, which_function, _arity, [file: _filename, line: _line_num]} | _rest] =
@@ -179,5 +185,10 @@ defmodule Worker do
 
   def worker_state(worker_pid) do
     GenServer.call(worker_pid, {:current_state})
+  end
+
+  # Helper function to add extra context 
+  def add_worker_context(worker_pid, new_context) when is_map(new_context) do
+    GenServer.call(worker_pid, {:add_new_context, new_context})
   end
 end
