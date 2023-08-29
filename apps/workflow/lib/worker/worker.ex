@@ -137,6 +137,7 @@ defmodule Worker do
              which_module: which_module,
              which_function: which_function,
              step_output: step_output,
+             worker_pid: self(),
              worker_state: %{
                state
                | history: [{which_module, which_function, "failed", step_output} | history]

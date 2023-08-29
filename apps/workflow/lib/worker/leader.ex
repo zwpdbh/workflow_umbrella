@@ -127,19 +127,48 @@ defmodule Worker.Leader do
            which_module: which_module,
            which_function: which_function,
            step_output: step_output,
-           worker_state: %{name: worker_name} = worker_state
+           worker_pid: worker_pid,
+           worker_state: worker_state
          } = _error_context},
-        %{symbol: symbol, worker_registry: worker_registry} = state
+        %{
+          symbol: symbol,
+          worker_registry: worker_registry,
+          workflows_in_progress: workflows_in_progress
+        } = state
       ) do
     Logger.debug(
       "restart worker due to step error in #{which_module}.#{which_function}: #{step_output} for symbol: #{symbol}"
     )
 
+    # Find the corresponding workflow by first find the name
+    {worker_name, _worker_pid} =
+      worker_registry
+      |> Enum.find(fn {_worker_name, pid} -> worker_pid == pid end)
+
+    %{steps: steps} = workflow = Map.get(workflows_in_progress, worker_name)
+
+    step_index =
+      steps |> Enum.find_index(fn %{step_status: status} -> status == "in_progress" end)
+
+    updated_step =
+      Enum.at(steps, step_index)
+      |> Map.put(:step_status, "failed")
+
+    updated_steps = List.replace_at(steps, step_index, updated_step)
+    updated_workflow = %{workflow | steps: updated_steps}
+    updated_workflows_in_progress = %{workflows_in_progress | worker_name => updated_workflow}
+
     {:ok, new_worker_pid} = start_new_worker(worker_state)
 
     # update the worker name -- worker pid register
     updated_worker_registry = Map.put(worker_registry, worker_name, new_worker_pid)
-    {:noreply, %{state | worker_registry: updated_worker_registry}}
+
+    {:noreply,
+     %{
+       state
+       | worker_registry: updated_worker_registry,
+         workflows_in_progress: updated_workflows_in_progress
+     }}
   end
 
   # Callback from worker to notice leader that the step from workflow is finished
@@ -168,8 +197,6 @@ defmodule Worker.Leader do
 
       {:noreply, state}
     else
-      workflows_in_progress |> IO.inspect(label: "#{__MODULE__} 171")
-
       %{steps: steps} = workflow = workflows_in_progress |> Map.get(worker_name)
       step_executed = Enum.at(steps, step_index)
 
