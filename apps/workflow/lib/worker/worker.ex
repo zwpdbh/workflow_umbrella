@@ -37,6 +37,7 @@ defmodule Worker do
     {:noreply, state}
   end
 
+  # Callback for execute a step and update worker's internal state
   # The worker is not aware of the concept of workflow.
   # The worker just execute a function assigned to it using context it current holds
   @impl true
@@ -57,18 +58,56 @@ defmodule Worker do
 
     # if the execution of step has no error, we update context and history
     # if there is error, the terminate callback will handle
-    new_context =
-      apply(
-        String.to_existing_atom("Elixir.#{module_name}"),
-        String.to_existing_atom("#{fun_name}"),
-        [context]
-      )
+    new_context = run_and_update_context(context, module_name, fun_name)
 
     updated_context = Map.merge(context, new_context)
     updated_history = [{module_name, fun_name, "succeed", nil} | history]
     updated_state = %{state | step_context: updated_context, history: updated_history}
 
     {:noreply, updated_state}
+  end
+
+  # Callback almost same from above except this will update its step execution result to Leader
+  @impl true
+  def handle_cast(
+        {:run_step,
+         %{
+           worker_name: worker_name,
+           which_module: which_module,
+           which_function: which_function,
+           step_index: step_index,
+           step_id: _step_id
+         }},
+        %State{step_context: context, history: history, symbol: symbol} = state
+      ) do
+    new_context = run_and_update_context(context, which_module, which_function)
+    updated_context = Map.merge(context, new_context)
+    updated_history = [{which_module, which_function, "succeed", nil} | history]
+    updated_state = %{state | step_context: updated_context, history: updated_history}
+
+    {:ok, worker_leader_pid} = Worker.Leader.get_leader_pid_from_symbol(symbol)
+
+    send(
+      worker_leader_pid,
+      {:worker_step_finished,
+       %{
+         # We pass worker's id to let Leader verify in its worker_registry
+         worker_pid: self(),
+         worker_name: worker_name,
+         step_index: step_index,
+         step_status: "succeed"
+       }}
+    )
+
+    {:noreply, updated_state}
+  end
+
+  defp run_and_update_context(context, module_name, fun_name) do
+    apply(
+      String.to_existing_atom("Elixir.#{module_name}"),
+      String.to_existing_atom("#{fun_name}"),
+      [context]
+    )
   end
 
   @impl true
@@ -114,6 +153,27 @@ defmodule Worker do
 
   def run_step(%{worker_pid: pid, module_name: module, step_name: step}) do
     GenServer.cast(pid, {:run_step, module, step})
+  end
+
+  def run_step_with_id(%{
+        worker_pid: worker_pid,
+        worker_name: worker_name,
+        which_module: which_module,
+        which_function: which_function,
+        step_index: step_index,
+        step_id: step_id
+      }) do
+    GenServer.cast(
+      worker_pid,
+      {:run_step,
+       %{
+         worker_name: worker_name,
+         which_module: which_module,
+         which_function: which_function,
+         step_index: step_index,
+         step_id: step_id
+       }}
+    )
   end
 
   def worker_state(worker_pid) do

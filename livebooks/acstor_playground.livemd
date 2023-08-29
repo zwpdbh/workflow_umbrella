@@ -289,6 +289,27 @@ tz = Timex.Timezone.get("Asia/Shanghai")
 ```
 
 ```elixir
-%{"a" => 1, "b" => 2, "c" => 3}
-|> Enum.map(fn {k, _v} -> {k, "aaa"} end)
+%{
+  "worker1" => %{
+    steps: [
+      %{
+        step_id: "9792ef00-b3f2-48e2-ac74-8c1e3cb1e20e",
+        step_index: 0,
+        step_status: "todo",
+        which_function: "az_login_using_sp",
+        which_module: "Steps.Acstor.Replication"
+      },
+      %{
+        step_id: "aa9eff47-9d06-4aa8-b9d2-ac16c62710af",
+        step_index: 1,
+        step_status: "todo",
+        which_function: "az_set_subscription",
+        which_module: "Steps.Acstor.Replication"
+      }
+    ],
+    workflow_id: "cf8d96ab-700a-415b-838d-a4e9b2b78a4e"
+  }
+}
+|> Enum.map(fn {k, v} -> {k, v} end)
+|> 
 ```
