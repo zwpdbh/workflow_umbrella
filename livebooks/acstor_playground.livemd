@@ -96,8 +96,8 @@ symbol = "azure_disk_replication"
 ## Test 1.1: start scenario
 
 ```elixir
-# Start a scenario
-Workflow.start_scenario(symbol)
+# Stop a scenario
+Workflow.stop_scenario(symbol)
 ```
 
 ```elixir
@@ -105,8 +105,8 @@ Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 ```
 
 ```elixir
-# Stop a scenario
-Workflow.stop_scenario(symbol)
+# Start a scenario
+Workflow.start_scenario(symbol)
 ```
 
 ```elixir

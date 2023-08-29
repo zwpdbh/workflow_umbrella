@@ -7,6 +7,8 @@ defmodule Worker.Leader do
               settings: nil,
               # worker_registry contains the mapping (k, v) where k is the worker_name, v is the worker_pid
               worker_registry: %{},
+              # workflows_in_progress is map(k, v) where k is the worker_name, v is one workflow %{workflow_id: xx, steps: [aa, bb,cc]}
+              # aa is %{}
               workflows_in_progress: %{},
               workflows_todo: [],
               workflows_finished: []
@@ -22,31 +24,63 @@ defmodule Worker.Leader do
   end
 
   @impl true
-  def handle_continue(:init_workers, %{symbol: symbol, worker_registry: worker_registry} = state) do
+  def handle_continue(
+        :init_workers,
+        %{
+          symbol: symbol,
+          worker_registry: worker_registry,
+          workflows_in_progress: workflow_in_progress
+        } = state
+      ) do
     settings = fetch_symbol_settings(symbol)
     worker_state = fresh_worker_state(settings)
 
-    # We shall maintain our own worker registering logic
-    # Do not name process create dynamically (do not naming worker process)
     updated_worker_registry =
-      1..settings.n_workers
-      |> Enum.to_list()
-      |> Enum.reduce(
-        worker_registry,
-        fn index, acc ->
-          {:ok, worker_pid} =
-            Map.merge(worker_state, %{name: "worker#{index}"}) |> start_new_worker()
+      init_worker_registry(settings.n_workers, worker_registry, worker_state)
 
-          Map.put(
-            acc,
-            "worker#{index}",
-            worker_pid
-          )
-        end
-      )
+    updated_workflows_in_progress =
+      init_workflows_in_progress(settings.n_workers, workflow_in_progress)
 
-    {:noreply, %{state | settings: settings, worker_registry: updated_worker_registry}}
+    {:noreply,
+     %{
+       state
+       | settings: settings,
+         worker_registry: updated_worker_registry,
+         workflows_in_progress: updated_workflows_in_progress
+     }}
+
     # {:noreply, %{state | settings: settings}}
+  end
+
+  # We shall maintain our own worker registering logic
+  # Do not name process create dynamically (do not naming worker process)
+  defp init_worker_registry(n_workers, worker_registry, worker_state) do
+    1..n_workers
+    |> Enum.to_list()
+    |> Enum.reduce(
+      worker_registry,
+      fn index, acc ->
+        {:ok, worker_pid} =
+          Map.merge(worker_state, %{name: "worker#{index}"}) |> start_new_worker()
+
+        Map.put(
+          acc,
+          "worker#{index}",
+          worker_pid
+        )
+      end
+    )
+  end
+
+  defp init_workflows_in_progress(n_workers, workflow_in_progress) do
+    1..n_workers
+    |> Enum.to_list()
+    |> Enum.reduce(
+      workflow_in_progress,
+      fn index, acc ->
+        Map.put(acc, "worker#{index}", nil)
+      end
+    )
   end
 
   defp fetch_symbol_settings(symbol) do
@@ -198,9 +232,12 @@ defmodule Worker.Leader do
 
   def generate_steps(workflow_definition) when is_list(workflow_definition) do
     workflow_definition
-    |> Enum.map(fn {which_module, which_function} ->
+    |> Enum.with_index()
+    |> Enum.map(fn {{which_module, which_function}, index} ->
       %{
+        step_index: index,
         step_id: Ecto.UUID.generate(),
+        step_status: "todo",
         which_module: which_module,
         which_function: which_function
       }
