@@ -134,6 +134,12 @@ Schedule workflows in Leader based on its current state
 Worker.Leader.schedule_workflows(symbol)
 ```
 
+Trigger Leader to let each worker to run a step from its assigned workflow
+
+```elixir
+Worker.Leader.execute_workflows_for_symbol(symbol)
+```
+
 <!-- livebook:{"branch_parent_index":4} -->
 
 ## Test 1.2 Check the worker state
@@ -284,5 +290,5 @@ tz = Timex.Timezone.get("Asia/Shanghai")
 
 ```elixir
 %{"a" => 1, "b" => 2, "c" => 3}
-|> Enum.map(fn {_k, v} -> v end)
+|> Enum.map(fn {k, _v} -> {k, "aaa"} end)
 ```

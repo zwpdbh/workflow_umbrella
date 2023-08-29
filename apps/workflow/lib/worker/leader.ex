@@ -186,19 +186,13 @@ defmodule Worker.Leader do
       |> Enum.filter(fn {_worker_name, workflow} -> workflow == nil end)
       |> Enum.map(fn {worker_name, nil} -> worker_name end)
 
-    available_workers |> IO.inspect(label: "#{__MODULE__} 189")
-
     assigned_workers_with_workflows =
       Enum.zip(available_workers, workflows_todo)
       |> Enum.reduce(%{}, fn {k, v}, acc -> Map.put(acc, k, v) end)
 
-    assigned_workers_with_workflows |> IO.inspect(label: "#{__MODULE__} 195")
-
     # Remove assigned workflows from workflows_todo
     updated_workflows_todo =
       workflows_todo |> Enum.drop(map_size(assigned_workers_with_workflows))
-
-    updated_workflows_todo |> IO.inspect(label: "#{__MODULE__} 201")
 
     # Merge old one with new one
     updated_workflows_in_progress =
@@ -212,17 +206,45 @@ defmodule Worker.Leader do
      }}
   end
 
-  # @impl true
-  # def handle_call(
-  #       {:execute_workflows},
-  #       _from,
-  #       %{workflows_in_progress: workflows_in_progress} = state
-  #     ) do
+  @impl true
+  def handle_call(
+        {:execute_workflows},
+        _from,
+        %{workflows_in_progress: workflows_in_progress, worker_registry: worker_registry} = state
+      ) do
+    # For each worker and its current workflow, run the next step which has status_todo
 
-  #     workflows_in_progress
-  #     |> Enum.each(fn {})
-  #   {:reply, nil, state}
-  # end
+    updated_workflows_in_progress =
+      workflows_in_progress
+      |> Enum.map(fn {worker_name, %{steps: steps, workflow_id: workflow_id}} ->
+        %{
+          which_module: which_module,
+          which_function: which_function,
+          step_index: step_index
+        } = next_todo_step = find_next_todo_step(steps)
+
+        worker_pid = Map.get(worker_registry, worker_name)
+
+        Worker.run_step(%{
+          worker_pid: worker_pid,
+          module_name: which_module,
+          step_name: which_function
+        })
+
+        updated_steps =
+          List.replace_at(steps, step_index, %{next_todo_step | step_status: "in_progress"})
+
+        {worker_name, %{steps: updated_steps, workflow_id: workflow_id}}
+      end)
+
+    {:reply, updated_workflows_in_progress,
+     %{state | workflows_in_progress: updated_workflows_in_progress}}
+  end
+
+  defp find_next_todo_step(steps) do
+    steps
+    |> Enum.find(fn %{step_status: status} -> status == "todo" end)
+  end
 
   # Callback which indicate some worker is ready
   @impl true
@@ -296,8 +318,8 @@ defmodule Worker.Leader do
     GenServer.call(:"#{__MODULE__}_#{symbol}", {:schedule_workflows})
   end
 
-  # # A helper function to trigger each worker to run a todo step from its assigned workflow
-  # def execute_workflows(symbol) do
-  #   GenServer.call(:"#{__MODULE__}_#{symbol}", {:execute_workflows})
-  # end
+  # A helper function to trigger each worker to run a todo step from its assigned workflow
+  def execute_workflows_for_symbol(symbol) do
+    GenServer.call(:"#{__MODULE__}_#{symbol}", {:execute_workflows})
+  end
 end
