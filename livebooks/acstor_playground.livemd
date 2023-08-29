@@ -136,7 +136,7 @@ end
 Worker.run_step(%{
   worker_pid: worker_pid,
   module_name: "Steps.Acstor.Replication",
-  step_name: "az_create_aks_cluster"
+  step_name: "az_login_using_sp"
 })
 ```
 
@@ -147,9 +147,9 @@ Worker.run_step(%{
 
 [
   "az_login_using_sp",
-  "az_set_subscription",
-  "az_create_resource_group",
-  "az_create_aks_cluster"
+  "az_set_subscription"
+  # "az_create_resource_group"
+  # "az_create_aks_cluster"
 ]
 |> Enum.each(fn each_step ->
   Worker.run_step(%{

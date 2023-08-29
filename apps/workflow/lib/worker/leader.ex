@@ -5,7 +5,11 @@ defmodule Worker.Leader do
   defmodule State do
     defstruct symbol: nil,
               settings: nil,
-              workers: nil
+              # worker_registry contains the mapping (k, v) where k is the worker_name, v is the worker_pid
+              worker_registry: %{},
+              # worker_jobs contains the mapping (k, v)
+              # where k is the worker_name, v is the list of steps to be execute
+              worker_jobs: %{}
   end
 
   def start_link(symbol) do
@@ -14,21 +18,21 @@ defmodule Worker.Leader do
 
   @impl true
   def init(symbol) do
-    {:ok, %State{symbol: symbol, workers: %{}}, {:continue, :init_workers}}
+    {:ok, %State{symbol: symbol, worker_registry: %{}}, {:continue, :init_workers}}
   end
 
   @impl true
-  def handle_continue(:init_workers, %{symbol: symbol, workers: workers} = state) do
+  def handle_continue(:init_workers, %{symbol: symbol, worker_registry: worker_registry} = state) do
     settings = fetch_symbol_settings(symbol)
     worker_state = fresh_worker_state(settings)
 
     # We shall maintain our own worker registering logic
     # Do not name process create dynamically (do not naming worker process)
-    updated_workers =
+    updated_worker_registry =
       1..settings.n_workers
       |> Enum.to_list()
       |> Enum.reduce(
-        workers,
+        worker_registry,
         fn index, acc ->
           {:ok, worker_pid} =
             Map.merge(worker_state, %{name: "worker#{index}"}) |> start_new_worker()
@@ -41,7 +45,7 @@ defmodule Worker.Leader do
         end
       )
 
-    {:noreply, %{state | settings: settings, workers: updated_workers}}
+    {:noreply, %{state | settings: settings, worker_registry: updated_worker_registry}}
     # {:noreply, %{state | settings: settings}}
   end
 
@@ -91,7 +95,7 @@ defmodule Worker.Leader do
            step_output: step_output,
            worker_state: %{name: worker_name} = worker_state
          } = _error_context},
-        %{symbol: symbol, workers: workers} = state
+        %{symbol: symbol, worker_registry: worker_registry} = state
       ) do
     Logger.debug(
       "restart worker due to step error in #{which_module}.#{which_function}: #{step_output} for symbol: #{symbol}"
@@ -100,8 +104,8 @@ defmodule Worker.Leader do
     {:ok, new_worker_pid} = start_new_worker(worker_state)
 
     # update the worker name -- worker pid register
-    updated_workers = Map.put(workers, worker_name, new_worker_pid)
-    {:noreply, %{state | workers: updated_workers}}
+    updated_worker_registry = Map.put(worker_registry, worker_name, new_worker_pid)
+    {:noreply, %{state | worker_registry: updated_worker_registry}}
   end
 
   # @impl true
@@ -111,8 +115,12 @@ defmodule Worker.Leader do
 
   # Callback for get a worker's pid using a name.
   @impl true
-  def handle_call({:get_worker_by_name, worker_name}, _from, %{workers: workers} = state) do
-    case Map.get(workers, worker_name, nil) do
+  def handle_call(
+        {:get_worker_by_name, worker_name},
+        _from,
+        %{worker_registry: worker_registry} = state
+      ) do
+    case Map.get(worker_registry, worker_name, nil) do
       nil ->
         {:reply, {:err, "worker #{worker_name} not exist"}, state}
 
