@@ -1,11 +1,23 @@
 defmodule Steps.LogBackend do
   alias Steps.Common.Time
 
-  def log_to_file(%{log_file: log_file_path, content: content}) do
+  # def log_to_file(%{log_file: log_file_path, content: content}) do
+  #   Task.start(fn ->
+  #     prepare_log_file_folder(log_file_path)
+
+  #     {:ok, log_file} = File.open(log_file_path, [:append])
+  #     write_content_to_log(content, log_file)
+
+  #     IO.binwrite(log_file, "\n")
+  #     File.close(log_file)
+  #   end)
+  # end
+
+  def log_to_file(%{log_file: log_file_path, content: content}, model \\ :append) do
     Task.start(fn ->
       prepare_log_file_folder(log_file_path)
 
-      {:ok, log_file} = File.open(log_file_path, [:append])
+      {:ok, log_file} = File.open(log_file_path, [model])
       write_content_to_log(content, log_file)
 
       IO.binwrite(log_file, "\n")

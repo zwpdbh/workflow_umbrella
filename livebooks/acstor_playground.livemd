@@ -119,7 +119,7 @@ Workflow.start_scenario(symbol)
 # Create a workflow which only has one symbol 
 %{
   symbol: symbol,
-  workflow_definition: [{"Steps.Acstor.Replication", "config_acstor_replication"}]
+  workflow_definition: [{"Steps.Acstor.Replication", "create_storage_pool"}]
 }
 |> Worker.Leader.add_workflow_for_symbol()
 
@@ -308,4 +308,23 @@ tz = Timex.Timezone.get("Asia/Shanghai")
 
 ```elixir
 Atom.to_string(:dummy_step_will_fail)
+```
+
+```elixir
+%{
+  aks: "acstorbyzhaowei-d29a6s",
+  disk_type: "azure_disk",
+  kubectl_config: "/tmp/logs/2023-8-30_12-38-36/d29a6s/kubectl_config",
+  log_file: "/tmp/logs/2023-8-30_12-38-36/d29a6s/log.txt",
+  managed_id: "71506f62-6b87-461a-8d88-fac326ead311",
+  node_rg: "MC_acstorbyzhaowei-d29a6s_acstorbyzhaowei-d29a6s_eastus",
+  prefix: "acstorbyzhaowei",
+  region: "eastus",
+  rg: "acstorbyzhaowei-d29a6s",
+  session_dir: "/tmp/logs/2023-8-30_12-38-36/d29a6s",
+  sub: "d20d4862-d44e-429d-bcd7-fe71a331a8b8",
+  suffix: "d29a6s",
+  vm_sku: "Standard_D4s_v3"
+}
+|> Steps.Acstor.Replication.create_storage_pool()
 ```

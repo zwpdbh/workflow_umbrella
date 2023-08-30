@@ -348,6 +348,81 @@ defmodule Steps.Acstor.Replication do
   end
 
   #########################################
+  # Create Storage Pool
+  #########################################
+
+  def create_storage_pool(
+        %{disk_type: disk_type, kubectl_config: kubectl_config, session_dir: session_dir} =
+          context
+      ) do
+    num_storage_pool =
+      case disk_type do
+        "nvme" -> 1
+        "azure_disk" -> 3
+        "san" -> 3
+      end
+
+    storage_pool_yaml_template =
+      case disk_type do
+        "nvme" ->
+          ""
+
+        "azure_disk" ->
+          Path.join([
+            File.cwd!(),
+            "apps/workflow/lib/steps/acstor/storage_pool",
+            "azure_disk.yml"
+          ])
+
+        "san" ->
+          ""
+      end
+
+    storage_pool_settings =
+      1..num_storage_pool
+      |> Enum.to_list()
+      |> Enum.map(fn index ->
+        storage_pool_name = "storagepool#{index}"
+
+        storage_pool_yaml =
+          storage_pool_yaml_template
+          |> File.read!()
+          |> EEx.eval_string(
+            %{storage_pool_name: storage_pool_name}
+            |> Enum.into([], fn {k, v} -> {k, v} end)
+          )
+
+        storage_pool_yaml_file = Path.join([session_dir, "#{storage_pool_name}.yml"])
+
+        Steps.LogBackend.log_to_file(
+          %{log_file: storage_pool_yaml_file, content: storage_pool_yaml},
+          :write
+        )
+
+        {storage_pool_name, storage_pool_yaml_file}
+      end)
+
+    yaml_files_for_each_storage_pool =
+      storage_pool_settings |> Enum.map(fn {_, yaml_file} -> yaml_file end)
+
+    storage_pools =
+      storage_pool_settings |> Enum.map(fn {storage_pool_name, _} -> storage_pool_name end)
+
+    yaml_files_for_each_storage_pool
+    |> Enum.each(fn each_yaml ->
+      {:ok, _output} =
+        %{
+          cmd: "kubectl apply -f  #{each_yaml}",
+          env: [{"KUBECONFIG", kubectl_config}]
+        }
+        |> Map.merge(context)
+        |> Exec.run()
+    end)
+
+    %{storage_pools: storage_pools}
+  end
+
+  #########################################
   #
   # For testing only to test how to handle a step failed
   def dummy_step_will_fail(%{} = _context) do
