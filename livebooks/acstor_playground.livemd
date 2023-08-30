@@ -119,7 +119,7 @@ Workflow.start_scenario(symbol)
 # Create a workflow which only has one symbol 
 %{
   symbol: symbol,
-  workflow_definition: [{"Steps.Acstor.Replication", "create_storage_pool"}]
+  workflow_definition: [{"Steps.Acstor.Replication", "create_storage_class"}]
 }
 |> Worker.Leader.add_workflow_for_symbol()
 
@@ -326,5 +326,5 @@ Atom.to_string(:dummy_step_will_fail)
   suffix: "d29a6s",
   vm_sku: "Standard_D4s_v3"
 }
-|> Steps.Acstor.Replication.create_storage_pool()
+|> Steps.Acstor.Replication.create_storage_class()
 ```

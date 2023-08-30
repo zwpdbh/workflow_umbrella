@@ -423,6 +423,40 @@ defmodule Steps.Acstor.Replication do
   end
 
   #########################################
+  # Create Storage Class
+  #########################################
+  def create_storage_class(%{kubectl_config: kubectl_config, session_dir: session_dir} = context) do
+    storage_pool_yaml =
+      Path.join([
+        File.cwd!(),
+        "apps/workflow/lib/steps/acstor/storage_class",
+        "class.yml"
+      ])
+      |> File.read!()
+      |> EEx.eval_string(
+        %{}
+        |> Enum.into([], fn {k, v} -> {k, v} end)
+      )
+
+    storage_class_yaml_file = Path.join([session_dir, "storage_class.yml"])
+
+    Steps.LogBackend.log_to_file(
+      %{log_file: storage_class_yaml_file, content: storage_pool_yaml},
+      :write
+    )
+
+    {:ok, _output} =
+      %{
+        cmd: "kubectl apply -f  #{storage_class_yaml_file}",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{}
+  end
+
+  #########################################
   #
   # For testing only to test how to handle a step failed
   def dummy_step_will_fail(%{} = _context) do
