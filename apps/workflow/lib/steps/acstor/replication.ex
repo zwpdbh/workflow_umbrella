@@ -787,6 +787,72 @@ defmodule Steps.Acstor.Replication do
     end
   end
 
+  def get_xfs_disk_pools_used_by_pod(
+        %{replication_info: info, pod_node_registry: pod_node_registry} = _context
+      ) do
+    node_xfs_disk_pool_registry =
+      info
+      |> Map.get("entries")
+      |> List.first()
+      |> Map.get("state")
+      |> Map.get("replica_topology")
+      |> Enum.map(fn {_id, %{"pool" => pool, "node" => node}} ->
+        %{"pool" => pool, "node" => node}
+      end)
+
+    nodes_in_use = pod_node_registry |> Enum.map(&Map.get(&1, :node_name))
+
+    xfs_disk_pools_used_by_pod =
+      node_xfs_disk_pool_registry
+      |> Enum.filter(fn %{"node" => node_name} -> Enum.member?(nodes_in_use, node_name) end)
+      |> Enum.map(fn %{"pool" => pool} -> pool end)
+
+    %{xfs_disk_pools_used_by_pod: xfs_disk_pools_used_by_pod}
+  end
+
+  def check_the_replication(%{kubectl_config: kubectl_config} = context) do
+    {:ok, _output} =
+      %{
+        cmd: "kubectl get pod -n acstor | grep io-engine ",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{}
+  end
+
+  # TODO : get the io engine pods
+  def get_the_io_engine_pods(%{kubectl_config: kubectl_config} = context) do
+    {:ok, _output} =
+      %{
+        cmd: "kubectl get pod -n acstor | grep io-engine ",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{}
+  end
+
+  # TODO use the xfs_disk_pools_used_by_pod and io engine pods to run md5
+  # Also need to find the mapping of acstor-io-engine-4949p where it comes from
+  def run_mdf_xfs_disk_pools_used_by_pod(
+        %{kubectl_config: kubectl_config, xfs_disk_pools_used_by_pod: _xfs_disk_pools_used_by_pod} =
+          context
+      ) do
+    {:ok, _output} =
+      %{
+        cmd:
+          "kubectl exec acstor-io-engine-4949p -n acstor -c io-engine -- ls -la  /xfs-disk-pool/csi-4vz72",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{}
+  end
+
   #########################################
   #
   # For testing only to test how to handle a step failed
