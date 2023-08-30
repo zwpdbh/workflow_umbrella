@@ -115,7 +115,7 @@ Check current leader state
 Worker.Leader.leader_state(symbol)
 ```
 
-Add one workflow definition for a symbol
+#### Add one workflow definition for a symbol
 
 ```elixir
 workflow_definition =
@@ -123,7 +123,8 @@ workflow_definition =
     "az_login_using_sp",
     "az_set_subscription",
     "az_create_resource_group",
-    "az_create_aks_cluster"
+    "az_create_aks_cluster",
+    "az_add_node_pool"
   ]
   |> Enum.map(fn each -> {"Steps.Acstor.Replication", each} end)
 ```
@@ -136,13 +137,13 @@ workflow_definition =
 |> Worker.Leader.add_workflow_for_symbol()
 ```
 
-Schedule workflows in Leader based on its current state
+#### Schedule workflows in Leader based on its current state
 
 ```elixir
 Worker.Leader.schedule_workflows(symbol)
 ```
 
-Trigger Leader to let each worker to run a step from its assigned workflow
+#### Trigger Leader to let each worker to run ONE step from its assigned workflow
 
 ```elixir
 Worker.Leader.execute_workflows_for_symbol(symbol)
@@ -151,13 +152,17 @@ Worker.Leader.execute_workflows_for_symbol(symbol)
 If there is one worker, then we could test one step by simply schedule a workload containing one step
 
 ```elixir
+# Create a workflow which only has one symbol 
 %{
   symbol: symbol,
-  workflow_definition: [{"Steps.Acstor.Replication", "az_add_node_pool"}]
+  workflow_definition: [{"Steps.Acstor.Replication", "get_aks_config"}]
 }
 |> Worker.Leader.add_workflow_for_symbol()
 
+# schedule the workflow to a worker (now, there is only one worker)
 Worker.Leader.schedule_workflows(symbol)
+
+# Trigger the workflows assigned to workers
 Worker.Leader.execute_workflows_for_symbol(symbol)
 ```
 
@@ -173,6 +178,10 @@ if Process.alive?(worker_pid) do
   Worker.worker_state(worker_pid)
 end
 ```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Test 1.3 Add extra context to worker
 
 ```elixir
 # Add extra context 

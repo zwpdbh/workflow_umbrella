@@ -146,6 +146,12 @@ defmodule Steps.Acstor.Replication do
     %{vm_sku: vm_sku}
   end
 
+  # Step 6. Get AKS config for running kubectl later
+  def get_aks_config(context) do
+    kubectl_config = Azure.Aks.get_aks_config(context)
+    %{kubectl_config: kubectl_config}
+  end
+
   # For testing only to test how to handle a step failed
   def dummy_step_will_fail(%{} = _context) do
     Process.sleep(10_000)
