@@ -147,7 +147,14 @@ defmodule Steps.Acstor.Replication do
   end
 
   # Step 6. Get AKS config for running kubectl later
-  def get_aks_config(context) do
+  def get_aks_config(%{log_file: log_file, aks: aks} = context) do
+    timestamp_str = Steps.LogBackend.generate_local_timestamp()
+
+    Steps.LogBackend.log_to_file(%{
+      log_file: log_file,
+      content: "#{timestamp_str} -- set kubectl context for aks: #{aks}"
+    })
+
     kubectl_config = Azure.Aks.get_aks_config(context)
     %{kubectl_config: kubectl_config}
   end

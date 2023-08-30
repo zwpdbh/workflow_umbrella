@@ -67,4 +67,15 @@ defmodule Steps.LogBackend do
   def create_tmp_log_file(log_file_name) do
     Path.join([System.tmp_dir!(), "/logs", Time.get_current_date_str(), log_file_name])
   end
+
+  def generate_local_timestamp() do
+    local_tz_info = Timex.Timezone.local()
+
+    {:ok, dt} =
+      Timex.Timezone.local()
+      |> Timex.Timezone.name_of()
+      |> Steps.Common.Time.get_current_datetime()
+
+    "#{inspect(local_tz_info)} [#{dt.year}-#{dt.month}-#{dt.day} #{dt.hour}:#{dt.minute}:#{dt.second}]"
+  end
 end

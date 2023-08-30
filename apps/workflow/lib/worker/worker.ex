@@ -128,6 +128,7 @@ defmodule Worker do
            _stacktrace} = _reason,
         %{symbol: symbol, history: history} = state
       ) do
+    "??????" |> IO.inspect(label: "#{__MODULE__} 131")
     {:ok, worker_leader_pid} = Worker.Leader.get_leader_pid_from_symbol(symbol)
 
     case err do
@@ -136,27 +137,60 @@ defmodule Worker do
 
         # Don't forget to update failed step into history
 
-        send(
-          worker_leader_pid,
-          {:worker_step_error,
-           %{
-             which_module: which_module,
-             which_function: which_function,
-             step_output: step_output,
-             worker_pid: self(),
-             worker_state: %{
-               state
-               | history: [{which_module, which_function, "failed", step_output} | history]
-             }
-           }}
-        )
+        notic_leader_worker_error(%{
+          leader: worker_leader_pid,
+          which_module: which_module,
+          which_function: which_function,
+          step_output: step_output,
+          worker_state: state,
+          history: history
+        })
 
       unknow_error ->
-        Logger.error("unknow error #{IO.inspect(unknow_error)}")
+        Logger.debug("unknow error #{inspect(unknow_error)}")
+
+        notic_leader_worker_error(%{
+          leader: worker_leader_pid,
+          which_module: which_module,
+          which_function: which_function,
+          step_output: unknow_error,
+          worker_state: state,
+          history: history
+        })
     end
 
     :normal
   end
+
+  defp notic_leader_worker_error(%{
+         leader: leader_pid,
+         which_module: which_module,
+         which_function: which_function,
+         step_output: stepoutput,
+         worker_state: state,
+         history: current_history
+       }) do
+    send(
+      leader_pid,
+      {:worker_step_error,
+       %{
+         which_module: which_module,
+         which_function: which_function,
+         step_output: "#{inspect(stepoutput)}",
+         worker_pid: self(),
+         worker_state: %{
+           state
+           | history: [
+               {which_module, which_function, "failed", "#{inspect(stepoutput)}"}
+               | current_history
+             ]
+         }
+       }}
+    )
+  end
+
+  # @impl true
+  # def handle_cast
 
   def run_step(%{worker_pid: pid, module_name: module, step_name: step}) do
     GenServer.cast(pid, {:run_step, module, step})
@@ -187,7 +221,7 @@ defmodule Worker do
     GenServer.call(worker_pid, {:current_state})
   end
 
-  # Helper function to add extra context 
+  # Helper function to add extra context
   def add_worker_context(worker_pid, new_context) when is_map(new_context) do
     GenServer.call(worker_pid, {:add_new_context, new_context})
   end

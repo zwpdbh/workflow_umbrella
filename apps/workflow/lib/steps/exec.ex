@@ -4,6 +4,7 @@ defmodule Steps.Exec do
   @moduledoc """
   For execute shell command from elixir
   """
+  alias Steps.LogBackend
 
   # When running command with special context
   def run(%{cmd: cmd_str, log_file: log_file, env: env_settings}) when is_list(env_settings) do
@@ -38,15 +39,7 @@ defmodule Steps.Exec do
   defp run_aux(%{cmd: cmd_str, log_file: log_file, env: env_settings}) do
     Logger.info("#{cmd_str}")
 
-    local_tz_info = Timex.Timezone.local()
-
-    {:ok, dt} =
-      Timex.Timezone.local()
-      |> Timex.Timezone.name_of()
-      |> Steps.Common.Time.get_current_datetime()
-
-    timestamp_str =
-      "#{inspect(local_tz_info)} [#{dt.year}-#{dt.month}-#{dt.day} #{dt.hour}:#{dt.minute}:#{dt.second}]"
+    timestamp_str = LogBackend.generate_local_timestamp()
 
     # also record the command we executed into log file
     Steps.LogBackend.log_to_file(%{

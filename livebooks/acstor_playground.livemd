@@ -109,11 +109,71 @@ Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 Workflow.start_scenario(symbol)
 ```
 
-Check current leader state
+<!-- livebook:{"branch_parent_index":4} -->
+
+## (optional) run one step for dev
+
+```elixir
+# If there is one worker, then we could test one step 
+# by simply schedule a workload containing one step
+# Create a workflow which only has one symbol 
+%{
+  symbol: symbol,
+  workflow_definition: [{"Steps.Acstor.Replication", "get_aks_config"}]
+}
+|> Worker.Leader.add_workflow_for_symbol()
+
+# schedule the workflow to a worker (now, there is only one worker)
+Worker.Leader.schedule_workflows(symbol)
+
+# Trigger the workflows assigned to workers
+Worker.Leader.execute_workflows_for_symbol(symbol)
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## (optinal) check the worker state
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+if Process.alive?(worker_pid) do
+  # check worker context
+  Worker.worker_state(worker_pid)
+end
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## (optinal) check leader state
 
 ```elixir
 Worker.Leader.leader_state(symbol)
 ```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## (optional) add extra context to worker
+
+```elixir
+# Add extra context 
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+if Process.alive?(worker_pid) do
+  # check worker context
+  Worker.add_worker_context(worker_pid, %{disk_type: "azure_disk"})
+end
+```
+
+## (optional) cancel workflow from worker
+
+```elixir
+Worker.Leader.cancel_workflow(%{symbol: symbol, worker_name: "worker1"})
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Test 1.2 Run workflow steps one by one
 
 #### Add one workflow definition for a symbol
 
@@ -148,91 +208,6 @@ Worker.Leader.schedule_workflows(symbol)
 ```elixir
 Worker.Leader.execute_workflows_for_symbol(symbol)
 ```
-
-If there is one worker, then we could test one step by simply schedule a workload containing one step
-
-```elixir
-# Create a workflow which only has one symbol 
-%{
-  symbol: symbol,
-  workflow_definition: [{"Steps.Acstor.Replication", "get_aks_config"}]
-}
-|> Worker.Leader.add_workflow_for_symbol()
-
-# schedule the workflow to a worker (now, there is only one worker)
-Worker.Leader.schedule_workflows(symbol)
-
-# Trigger the workflows assigned to workers
-Worker.Leader.execute_workflows_for_symbol(symbol)
-```
-
-<!-- livebook:{"branch_parent_index":4} -->
-
-## Test 1.2 Check the worker state
-
-```elixir
-{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
-
-if Process.alive?(worker_pid) do
-  # check worker context
-  Worker.worker_state(worker_pid)
-end
-```
-
-<!-- livebook:{"branch_parent_index":4} -->
-
-## Test 1.3 Add extra context to worker
-
-```elixir
-# Add extra context 
-{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
-
-if Process.alive?(worker_pid) do
-  # check worker context
-  Worker.add_worker_context(worker_pid, %{disk_type: "azure_disk"})
-end
-```
-
-<!-- livebook:{"branch_parent_index":4} -->
-
-## Test 2: execute steps from Replication
-
-```elixir
-{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
-
-Worker.run_step(%{
-  worker_pid: worker_pid,
-  module_name: "Steps.Acstor.Replication",
-  step_name: "az_login_using_sp"
-})
-```
-
-## Test 3: execute workflows from Replication
-
-```elixir
-{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
-
-[
-  "az_login_using_sp",
-  # "az_set_subscription"
-  "dummy_step_will_fail"
-  # "az_create_resource_group"
-  # "az_create_aks_cluster"
-]
-|> Enum.each(fn each_step ->
-  Worker.run_step(%{
-    worker_pid: worker_pid,
-    module_name: "Steps.Acstor.Replication",
-    step_name: each_step
-  })
-end)
-```
-
-Currently, there is one problem: when we send a workflow to a worker to execute. It execute each step async from the client point of view. But in the worker's server process, it execute them in sync.
-
-If some operation takes a lot of time to finish. There is no way to check the worker's state using `GenServer.Call`.
-
-That may suggest to move the check worker status's responsibility into `Worker.Leader`.
 
 <!-- livebook:{"branch_parent_index":4} -->
 

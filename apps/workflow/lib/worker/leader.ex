@@ -145,30 +145,42 @@ defmodule Worker.Leader do
       worker_registry
       |> Enum.find(fn {_worker_name, pid} -> worker_pid == pid end)
 
-    %{steps: steps} = workflow = Map.get(workflows_in_progress, worker_name)
+    workflow = Map.get(workflows_in_progress, worker_name)
 
-    step_index =
-      steps |> Enum.find_index(fn %{step_status: status} -> status == "in_progress" end)
+    case workflow do
+      nil ->
+        {:noreply, state}
 
-    updated_step =
-      Enum.at(steps, step_index)
-      |> Map.put(:step_status, "failed")
+      %{steps: steps} ->
+        step_index =
+          steps |> Enum.find_index(fn %{step_status: status} -> status == "in_progress" end)
 
-    updated_steps = List.replace_at(steps, step_index, updated_step)
-    updated_workflow = %{workflow | steps: updated_steps}
-    updated_workflows_in_progress = %{workflows_in_progress | worker_name => updated_workflow}
+        updated_step =
+          Enum.at(steps, step_index)
+          |> Map.put(:step_status, "failed")
 
-    {:ok, new_worker_pid} = start_new_worker(worker_state)
+        # TODO: check some policy service to see if there is retry defined for it.
+        # If there is no retry remained, remove the workflow from workflow_in_progress to workflow_finished
+        # Otherwise, keep it in the workflow_in_progress.
 
-    # update the worker name -- worker pid register
-    updated_worker_registry = Map.put(worker_registry, worker_name, new_worker_pid)
+        updated_steps = List.replace_at(steps, step_index, updated_step)
 
-    {:noreply,
-     %{
-       state
-       | worker_registry: updated_worker_registry,
-         workflows_in_progress: updated_workflows_in_progress
-     }}
+        # TODO: rewrite this into one step.
+        updated_workflow = %{workflow | steps: updated_steps}
+        updated_workflows_in_progress = %{workflows_in_progress | worker_name => updated_workflow}
+
+        {:ok, new_worker_pid} = start_new_worker(worker_state)
+
+        # update the worker name -- worker pid register
+        updated_worker_registry = Map.put(worker_registry, worker_name, new_worker_pid)
+
+        {:noreply,
+         %{
+           state
+           | worker_registry: updated_worker_registry,
+             workflows_in_progress: updated_workflows_in_progress
+         }}
+    end
   end
 
   # Callback from worker to notice leader that the step from workflow is finished
@@ -295,6 +307,28 @@ defmodule Worker.Leader do
      }}
   end
 
+  # Callback to cancel workflow running on worker
+  @impl true
+  def handle_call(
+        {:cancel_workflow, worker_name},
+        _from,
+        %{
+          workflows_in_progress: workflows_in_progress,
+          workflows_finished: workflows_finished
+        } = state
+      ) do
+    canceled_workflow = Map.get(workflows_in_progress, worker_name)
+    updated_workflows_in_progress = %{workflows_in_progress | worker_name => nil}
+    updated_workflows_finished = [canceled_workflow | workflows_finished]
+
+    {:reply, canceled_workflow,
+     %{
+       state
+       | workflows_in_progress: updated_workflows_in_progress,
+         workflows_finished: updated_workflows_finished
+     }}
+  end
+
   @impl true
   def handle_call(
         {:execute_workflows},
@@ -312,8 +346,6 @@ defmodule Worker.Leader do
         execute_workflows_aux(worker_registry, worker_name, workflow_id, steps)
       end)
       |> Map.new()
-
-    updated_workflows_in_progress |> IO.inspect(label: "#{__MODULE__} 316")
 
     {:reply, updated_workflows_in_progress,
      %{state | workflows_in_progress: updated_workflows_in_progress}}
@@ -434,5 +466,10 @@ defmodule Worker.Leader do
   # It will return update and return the latest workflows_in_progress
   def execute_workflows_for_symbol(symbol) do
     GenServer.call(:"#{__MODULE__}_#{symbol}", {:execute_workflows})
+  end
+
+  # Cancel the workflow running on worker for some symbol
+  def cancel_workflow(%{symbol: symbol, worker_name: worker_name}) do
+    GenServer.call(:"#{__MODULE__}_#{symbol}", {:cancel_workflow, worker_name})
   end
 end
