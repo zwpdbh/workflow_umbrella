@@ -727,7 +727,7 @@ defmodule Steps.Acstor.Replication do
   end
 
   def get_acstor_api_value(%{kubectl_config: kubectl_config} = context) do
-    {:ok, acstor_api} =
+    {:ok, output} =
       %{
         cmd: "kubectl get pod -n acstor | grep api-rest",
         env: [{"KUBECONFIG", kubectl_config}]
@@ -735,23 +735,56 @@ defmodule Steps.Acstor.Replication do
       |> Map.merge(context)
       |> Exec.run()
 
+    %{"acstor_api" => acstor_api} = Regex.named_captures(~r/(?<acstor_api>[a-zA-z0-9-]*)/, output)
+
     %{acstor_api_value: acstor_api}
   end
 
   def forward_acstor_api_pod_to_host(
         %{kubectl_config: kubectl_config, acstor_api_value: acstor_api_value} = context
       ) do
-    host_port = 9096
+    host_port = 9092
 
-    {:ok, _output} =
+    Task.start(fn ->
       %{
-        cmd: "kubectl port-forward #{acstor_api_value} -n acstor #{host_port}:8081",
-        env: [{"KUBECONFIG", kubectl_config}]
+        cmd: "lsof -i :#{host_port} | awk 'NR!=1 {print $2}' | xargs kill"
       }
       |> Map.merge(context)
       |> Exec.run()
 
+      {:ok, _output} =
+        %{
+          cmd: "kubectl port-forward #{acstor_api_value} -n acstor #{host_port}:8081 &",
+          env: [{"KUBECONFIG", kubectl_config}]
+        }
+        |> Map.merge(context)
+        |> Exec.run()
+    end)
+
     %{acstor_api_host_port: host_port}
+  end
+
+  def get_replication_info(
+        %{
+          acstor_api_host_port: host_port
+        } = context
+      ) do
+    {:ok, cmd_output} =
+      %{
+        cmd: "curl 'http://127.0.0.1:#{host_port}/v0/volumes?max_entries=1'"
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{"info" => info} = Regex.named_captures(~r/(?<info>{.*})/, cmd_output)
+
+    case info do
+      nil ->
+        raise "failed to get json info, the output is: #{cmd_output}"
+
+      json_output ->
+        %{replication_info: Jason.decode!(json_output)}
+    end
   end
 
   #########################################

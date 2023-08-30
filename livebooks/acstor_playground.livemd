@@ -119,7 +119,7 @@ Workflow.start_scenario(symbol)
 # Create a workflow which only has one symbol 
 %{
   symbol: symbol,
-  workflow_definition: [{"Steps.Acstor.Replication", "get_acstor_api_value"}]
+  workflow_definition: [{"Steps.Acstor.Replication", "get_replication_info"}]
 }
 |> Worker.Leader.add_workflow_for_symbol()
 
@@ -162,6 +162,28 @@ Worker.Leader.leader_state(symbol)
 {:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
 
 update_context = %{
+  acstor_api_value: "acstor-api-rest-7f6f545689-z9rzg",
+  aks: "acstorbyzhaowei-d29a6s",
+  aks_node_label_registry: [
+    %{label: "node0", node_name: "aks-storagepool-11078561-vmss000000", selector: "targetNode"},
+    %{label: "node1", node_name: "aks-storagepool-11078561-vmss000001", selector: "targetNode"},
+    %{label: "node2", node_name: "aks-storagepool-11078561-vmss000002", selector: "targetNode"}
+  ],
+  aks_node_tag_registry: [
+    %{node_name: "aks-storagepool-11078561-vmss000000", tag: "targetNode=node0"},
+    %{node_name: "aks-storagepool-11078561-vmss000001", tag: "targetNode=node1"},
+    %{node_name: "aks-storagepool-11078561-vmss000002", tag: "targetNode=node2"}
+  ],
+  aks_nodes: [
+    "aks-storagepool-11078561-vmss000000",
+    "aks-storagepool-11078561-vmss000001",
+    "aks-storagepool-11078561-vmss000002"
+  ],
+  disk_type: "azure_disk",
+  kubectl_config: "/tmp/logs/2023-8-30_12-38-36/d29a6s/kubectl_config",
+  log_file: "/tmp/logs/2023-8-30_12-38-36/d29a6s/log.txt",
+  managed_id: "71506f62-6b87-461a-8d88-fac326ead311",
+  node_rg: "MC_acstorbyzhaowei-d29a6s_acstorbyzhaowei-d29a6s_eastus",
   pod_node_registry: [
     %{node_name: "aks-storagepool-11078561-vmss000001", pod_name: "pod-0zbdo1"},
     %{node_name: "aks-storagepool-11078561-vmss000002", pod_name: "pod-z0ci58"}
@@ -169,7 +191,20 @@ update_context = %{
   pod_pvc_registry: [
     %{pod_name: "pod-0zbdo1", pvc_name: "pvc-ow5i0b"},
     %{pod_name: "pod-z0ci58", pvc_name: "pvc-eo816g"}
-  ]
+  ],
+  prefix: "acstorbyzhaowei",
+  pvc_settings: [
+    %{pvc_name: "pvc-ow5i0b", pvc_size: "100Gi"},
+    %{pvc_name: "pvc-eo816g", pvc_size: "800Gi"}
+  ],
+  region: "eastus",
+  rg: "acstorbyzhaowei-d29a6s",
+  session_dir: "/tmp/logs/2023-8-30_12-38-36/d29a6s",
+  storage_class: "acstor-replication",
+  storage_pools: ["storagepool1", "storagepool2", "storagepool3"],
+  sub: "d20d4862-d44e-429d-bcd7-fe71a331a8b8",
+  suffix: "d29a6s",
+  vm_sku: "Standard_D4s_v3"
 }
 
 if Process.alive?(worker_pid) do
@@ -307,7 +342,16 @@ So, we need to save our state to leader in the callback.
 state = Worker.worker_state(worker_pid)
 
 state.step_context
-|> Steps.Acstor.Replication.test_kubectl()
+|> Steps.Acstor.Replication.get_replication_info()
+```
+
+```elixir
+%{replication_info: info} = %{
+  replication_info:
+    "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\n                                 Dload  Upload   Total   Spent    Left  Speed\n\r  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0\r100  1626  100  1626    0     0   1868      0 --:--:-- --:--:-- --:--:--  1868\n{\"entries\":[{\"spec\":{\"num_replicas\":3,\"size\":858993459200,\"status\":\"Created\",\"target\":{\"node\":\"aks-storagepool-11078561-vmss000002\",\"protocol\":\"nvmf\"},\"uuid\":\"1462611c-d033-4d68-8fbe-745f00954902\",\"topology\":{\"pool_topology\":{\"labelled\":{\"exclusion\":{},\"inclusion\":{\"openebs.io/created-by\":\"operator-diskpool\"}}}},\"policy\":{\"self_heal\":true},\"thin\":true},\"state\":{\"target\":{\"children\":[{\"state\":\"Online\",\"uri\":\"bdev:////xfs-disk-pool/csi-xlwcz/f0a2889f-eb13-4154-9d4e-a7a02ef125aa?uuid=f0a2889f-eb13-4154-9d4e-a7a02ef125aa\"},{\"state\":\"Online\",\"uri\":\"nvmf://10.224.0.8:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-9twlz/8af9a6e9-0148-499f-9719-179dd5e0c1c2?uuid=8af9a6e9-0148-499f-9719-179dd5e0c1c2\"},{\"state\":\"Online\",\"uri\":\"nvmf://10.224.0.9:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-4vz72/3efa5d89-cc03-4724-8c8e-c5dc87b50934?uuid=3efa5d89-cc03-4724-8c8e-c5dc87b50934\"}],\"deviceUri\":\"nvmf://10.224.0.7:8420/nqn.2019-05.io.openebs:1462611c-d033-4d68-8fbe-745f00954902\",\"node\":\"aks-storagepool-11078561-vmss000002\",\"rebuilds\":0,\"protocol\":\"nvmf\",\"size\":858993459200,\"state\":\"Online\",\"uuid\":\"1bec6e85-7535-4922-9996-7c5250378599\"},\"size\":858993459200,\"status\":\"Online\",\"uuid\":\"1462611c-d033-4d68-8fbe-745f00954902\",\"replica_topology\":{\"8af9a6e9-0148-499f-9719-179dd5e0c1c2\":{\"node\":\"aks-storagepool-11078561-vmss000000\",\"pool\":\"csi-9twlz\",\"state\":\"Online\"},\"3efa5d89-cc03-4724-8c8e-c5dc87b50934\":{\"node\":\"aks-storagepool-11078561-vmss000001\",\"pool\":\"csi-4vz72\",\"state\":\"Online\"},\"f0a2889f-eb13-4154-9d4e-a7a02ef125aa\":{\"node\":\"aks-storagepool-11078561-vmss000002\",\"pool\":\"csi-xlwcz\",\"state\":\"Online\"}}}}],\"next_token\":1}"
+}
+
+info
 ```
 
 ```elixir
@@ -316,7 +360,7 @@ state.step_context
 state = Worker.worker_state(worker_pid)
 
 state.step_context
-|> Steps.Acstor.Replication.get_acstor_api_value()
+|> Steps.Acstor.Replication.test_kubectl()
 ```
 
 ```elixir
