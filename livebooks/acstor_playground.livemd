@@ -119,7 +119,7 @@ Workflow.start_scenario(symbol)
 # Create a workflow which only has one symbol 
 %{
   symbol: symbol,
-  workflow_definition: [{"Steps.Acstor.Replication", "az_assign_contributor_role"}]
+  workflow_definition: [{"Steps.Acstor.Replication", "install_acstor_addons"}]
 }
 |> Worker.Leader.add_workflow_for_symbol()
 

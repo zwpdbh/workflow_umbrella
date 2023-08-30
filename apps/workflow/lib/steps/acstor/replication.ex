@@ -272,6 +272,58 @@ defmodule Steps.Acstor.Replication do
   end
 
   #########################################
+  # Install ACStor Addons
+  #########################################
+
+  def install_acstor_addons(
+        %{session_dir: session_dir, kubectl_config: kubectl_config, log_file: log_file} = context
+      ) do
+    git_repo = "git@ssh.dev.azure.com:v3/msazure/One/azstor-add-ons"
+    download_folder = Path.join([session_dir, "azstor_addons"])
+
+    timestamp_str = Steps.LogBackend.generate_local_timestamp()
+    Logger.info("#{timestamp_str} -- Install acstor Addons from git repo: #{git_repo}")
+
+    Steps.LogBackend.log_to_file(%{
+      log_file: log_file,
+      content: "#{timestamp_str} -- Install acstor Addons from git repo: #{git_repo}"
+    })
+
+    cmd_01 = "git clone git@ssh.dev.azure.com:v3/msazure/One/azstor-add-ons #{download_folder}"
+
+    cmd_02 = """
+    cd #{download_folder}/charts/latest/ &&
+    helm dependency build
+    """
+
+    cmd_03 = """
+    cd #{download_folder} &&
+    helm install acstor charts/latest --namespace acstor --create-namespace \
+    --version 0.0.0-latest \
+    --set image.tag=latest \
+    --set image.registry="azstortest.azurecr.io" \
+    --set image.repo="mayadata" \
+    --set capacityProvisioner.image.tag=latest \
+    --set capacityProvisioner.image.registry="azstortest.azurecr.io"
+    """
+
+    cmd_04 = "kubectl get pods -n acstor"
+
+    [cmd_01, cmd_02, cmd_03, cmd_04]
+    |> Enum.each(fn each_cmd ->
+      {:ok, _output} =
+        %{
+          cmd: each_cmd,
+          env: [{"KUBECONFIG", kubectl_config}]
+        }
+        |> Map.merge(context)
+        |> Exec.run()
+    end)
+
+    %{}
+  end
+
+  #########################################
   #
   # For testing only to test how to handle a step failed
   def dummy_step_will_fail(%{} = _context) do
