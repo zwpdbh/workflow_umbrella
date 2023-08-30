@@ -324,6 +324,30 @@ defmodule Steps.Acstor.Replication do
   end
 
   #########################################
+  # Configure Replication
+  #########################################
+
+  def config_acstor_replication(%{kubectl_config: kubectl_config} = context) do
+    [
+      "kubectl set image deployment/acstor-api-rest api-rest=azstortest.azurecr.io/artifact/424bd44c-13b4-4637-a5a4-0b9506e90413/buddy/rest:47c414cef91d05651985c66d6f3bbe317aab35e0-20230809.5 -n acstor",
+      "kubectl set image deployment/acstor-agent-core agent-core=azstortest.azurecr.io/artifact/424bd44c-13b4-4637-a5a4-0b9506e90413/buddy/agents.core:47c414cef91d05651985c66d6f3bbe317aab35e0-20230809.5 -n acstor ",
+      "kubectl set image deployment/acstor-csi-controller csi-controller=azstortest.azurecr.io/artifact/424bd44c-13b4-4637-a5a4-0b9506e90413/buddy/csi.controller:b7497942a0b4bfaa2f4467ff9132dbb24d110790-20230809.1 -n acstor",
+      "kubectl set image daemonset/acstor-io-engine io-engine=azstortest.azurecr.io/artifact/424bd44c-13b4-4637-a5a4-0b9506e90413/buddy/mayastor-io-engine:6b2a0d7946981ffccefee65698c9f5cb57c19d62-20230801.1 -n acstor"
+    ]
+    |> Enum.each(fn each_cmd ->
+      {:ok, _output} =
+        %{
+          cmd: each_cmd,
+          env: [{"KUBECONFIG", kubectl_config}]
+        }
+        |> Map.merge(context)
+        |> Exec.run()
+    end)
+
+    %{}
+  end
+
+  #########################################
   #
   # For testing only to test how to handle a step failed
   def dummy_step_will_fail(%{} = _context) do
