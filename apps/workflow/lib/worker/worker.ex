@@ -128,7 +128,6 @@ defmodule Worker do
            _stacktrace} = _reason,
         %{symbol: symbol, history: history} = state
       ) do
-    "??????" |> IO.inspect(label: "#{__MODULE__} 131")
     {:ok, worker_leader_pid} = Worker.Leader.get_leader_pid_from_symbol(symbol)
 
     case err do
@@ -139,8 +138,8 @@ defmodule Worker do
 
         notic_leader_worker_error(%{
           leader: worker_leader_pid,
-          which_module: which_module,
-          which_function: which_function,
+          which_module: Atom.to_string(which_module),
+          which_function: Atom.to_string(which_function),
           step_output: step_output,
           worker_state: state,
           history: history
@@ -151,8 +150,8 @@ defmodule Worker do
 
         notic_leader_worker_error(%{
           leader: worker_leader_pid,
-          which_module: which_module,
-          which_function: which_function,
+          which_module: Atom.to_string(which_module),
+          which_function: Atom.to_string(which_function),
           step_output: unknow_error,
           worker_state: state,
           history: history
