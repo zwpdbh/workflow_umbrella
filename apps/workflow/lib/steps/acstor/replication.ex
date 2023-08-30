@@ -539,6 +539,38 @@ defmodule Steps.Acstor.Replication do
     %{aks_nodes: nodes_name}
   end
 
+  def label_nodes_with_tags(%{aks_nodes: aks_nodes, kubectl_config: kubectl_config} = context) do
+    aks_node_tag_registry =
+      aks_nodes
+      |> Enum.with_index()
+      |> Enum.map(fn {node, i} -> %{node_name: node, tag: "targetNode=node#{i}"} end)
+
+    aks_node_tag_registry
+    |> Enum.each(fn %{node_name: node_name, tag: tag} ->
+      {:ok, _output} =
+        %{
+          cmd: "kubectl label nodes #{node_name} #{tag}",
+          env: [{"KUBECONFIG", kubectl_config}]
+        }
+        |> Map.merge(context)
+        |> Exec.run()
+    end)
+
+    %{aks_node_tag_registry: aks_node_tag_registry}
+  end
+
+  def check_labeled_noded(%{kubectl_config: kubectl_config} = context) do
+    {:ok, _output} =
+      %{
+        cmd: "kubectl get node --show-labels | grep targetNode",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{}
+  end
+
   #########################################
   #
   # For testing only to test how to handle a step failed
