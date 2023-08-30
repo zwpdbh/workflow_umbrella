@@ -462,6 +462,62 @@ defmodule Steps.Acstor.Replication do
   # Create PVC
   #########################################
 
+  def create_pvc(
+        %{kubectl_config: kubectl_config, session_dir: session_dir, storage_class: storage_class} =
+          context
+      ) do
+    pvc_name = get_random_pvc_name()
+    pvc_size = get_random_pvc_size()
+
+    pvc_yaml =
+      Path.join([
+        File.cwd!(),
+        "apps/workflow/lib/steps/acstor/pvc",
+        "pvc.yml"
+      ])
+      |> File.read!()
+      |> EEx.eval_string(
+        %{
+          pvc_name: pvc_name,
+          pvc_size: pvc_size,
+          storage_class_name: storage_class
+        }
+        |> Enum.into([], fn {k, v} -> {k, v} end)
+      )
+
+    pvc_yaml_file = Path.join([session_dir, "#{pvc_name}.yml"])
+
+    Steps.LogBackend.log_to_file(
+      %{log_file: pvc_yaml_file, content: pvc_yaml},
+      :write
+    )
+
+    {:ok, _output} =
+      %{
+        cmd: "kubectl apply -f  #{pvc_yaml_file}",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    case context do
+      %{pvc_settings: existing_records} ->
+        %{pvc_settings: [%{pvc_size: pvc_size, pvc_name: pvc_name} | existing_records]}
+
+      _ ->
+        %{pvc_settings: [%{pvc_size: pvc_size, pvc_name: pvc_name}]}
+    end
+  end
+
+  def get_random_pvc_size() do
+    sizes = for n <- 100..1000, rem(n, 100) == 0, do: "#{n}Gi"
+    sizes |> Enum.random()
+  end
+
+  def get_random_pvc_name() do
+    "pvc-#{get_random_str()}"
+  end
+
   #########################################
   #
   # For testing only to test how to handle a step failed
