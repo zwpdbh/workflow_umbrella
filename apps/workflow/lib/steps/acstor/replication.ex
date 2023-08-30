@@ -539,24 +539,26 @@ defmodule Steps.Acstor.Replication do
     %{aks_nodes: nodes_name}
   end
 
-  def label_nodes_with_tags(%{aks_nodes: aks_nodes, kubectl_config: kubectl_config} = context) do
-    aks_node_tag_registry =
+  def label_nodes_with_labels(%{aks_nodes: aks_nodes, kubectl_config: kubectl_config} = context) do
+    aks_node_label_registry =
       aks_nodes
       |> Enum.with_index()
-      |> Enum.map(fn {node, i} -> %{node_name: node, tag: "targetNode=node#{i}"} end)
+      |> Enum.map(fn {node, i} ->
+        %{node_name: node, selector: "targetNode", label: "node#{i}"}
+      end)
 
-    aks_node_tag_registry
-    |> Enum.each(fn %{node_name: node_name, tag: tag} ->
+    aks_node_label_registry
+    |> Enum.each(fn %{node_name: node_name, label: label, selector: selector} ->
       {:ok, _output} =
         %{
-          cmd: "kubectl label nodes #{node_name} #{tag}",
+          cmd: "kubectl label nodes #{node_name} #{selector}=#{label}",
           env: [{"KUBECONFIG", kubectl_config}]
         }
         |> Map.merge(context)
         |> Exec.run()
     end)
 
-    %{aks_node_tag_registry: aks_node_tag_registry}
+    %{aks_node_label_registry: aks_node_label_registry}
   end
 
   def check_labeled_noded(%{kubectl_config: kubectl_config} = context) do
@@ -570,6 +572,16 @@ defmodule Steps.Acstor.Replication do
 
     %{}
   end
+
+  # def create_pod_on_some_node(
+  #       %{aks_node_tag_registry: aks_node_tag_registry, kubectl_config: kubectl_config} = context
+  #     ) do
+  #   %{node_name: node_name, tag: tag} =
+  #     aks_node_tag_registry
+  #     |> Enum.random()
+
+  #   %{}
+  # end
 
   #########################################
   #
