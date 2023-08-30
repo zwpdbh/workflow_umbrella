@@ -2,6 +2,7 @@ defmodule Steps.Acstor.Replication do
   @moduledoc """
   Steps for testing ACStor Replication
   """
+  require Logger
   alias Steps.Exec
   alias Steps.Common.Time
 
@@ -71,13 +72,21 @@ defmodule Steps.Acstor.Replication do
   end
 
   # Step 2: set subscription
-  def az_set_subscription(%{sub: sub_id, session_dir: session_dir, log_file: log_file}) do
+  def az_set_subscription(context) do
     {:ok, _output} =
-      Exec.run(%{
-        cmd: "az account set --subscription #{sub_id}",
-        log_file: log_file,
-        env: [{"AZURE_CONFIG_DIR", session_dir}]
-      })
+      %{
+        cmd: "az account set --subscription #{context.sub}",
+        env: [{"AZURE_CONFIG_DIR", context.session_dir}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    # {:ok, _output} =
+    #   Exec.run(%{
+    #     cmd: "az account set --subscription #{sub_id}",
+    #     log_file: log_file,
+    #     env: [{"AZURE_CONFIG_DIR", session_dir}]
+    #   })
 
     # If the step produce no extra parameter (or context), we need to return empty map
     %{}
@@ -94,11 +103,12 @@ defmodule Steps.Acstor.Replication do
     rg = "#{common_prefix}-#{random_suffix}"
 
     {:ok, _output} =
-      Exec.run(%{
+      %{
         cmd: "az group create  --location #{region} --name #{rg}",
         log_file: log_file,
         env: [{"AZURE_CONFIG_DIR", session_dir}]
-      })
+      }
+      |> Exec.run()
 
     %{rg: rg}
   end
@@ -120,6 +130,19 @@ defmodule Steps.Acstor.Replication do
     %{aks: rg}
   end
 
+  # Step 5.0 set disk type
+  def set_disk_type_to_azure_disk(%{} = _context) do
+    %{
+      disk_type: "azure_disk"
+    }
+  end
+
+  def set_disk_type_to_nvme(%{} = _context) do
+    %{
+      disk_type: "nvme"
+    }
+  end
+
   # Step 5: Add node pool
   def az_add_node_pool(%{
         aks: aks,
@@ -139,7 +162,7 @@ defmodule Steps.Acstor.Replication do
       Exec.run(%{
         cmd:
           "az aks nodepool add --cluster-name #{aks} --name storagepool --resource-group #{rg} --node-vm-size #{vm_sku} --node-count 3 ",
-        session_dir: session_dir,
+        env: [{"AZURE_CONFIG_DIR", session_dir}],
         log_file: log_file
       })
 
@@ -147,18 +170,109 @@ defmodule Steps.Acstor.Replication do
   end
 
   # Step 6. Get AKS config for running kubectl later
-  def get_aks_config(%{log_file: log_file, aks: aks} = context) do
+  def get_aks_config(%{log_file: log_file, aks: aks, session_dir: session_dir} = context) do
     timestamp_str = Steps.LogBackend.generate_local_timestamp()
+    Logger.info("#{timestamp_str} -- set kubectl context for aks: #{aks}")
 
     Steps.LogBackend.log_to_file(%{
       log_file: log_file,
       content: "#{timestamp_str} -- set kubectl context for aks: #{aks}"
     })
 
-    kubectl_config = Azure.Aks.get_aks_config(context)
-    %{kubectl_config: kubectl_config}
+    # Save kubectl context to file for later use
+    kubectl_config_value = Azure.Aks.get_aks_config(context)
+    kubectl_config_file = Path.join([session_dir, "kubectl_config"])
+
+    Steps.LogBackend.log_to_file(%{log_file: kubectl_config_file, content: kubectl_config_value})
+
+    %{kubectl_config: kubectl_config_file}
   end
 
+  # Step 7: Helper function to check nodes
+  def kubectl_get_nodes(%{kubectl_config: kubectl_config} = context) do
+    {:ok, _output} =
+      %{
+        cmd: "kubectl get nodes -o wide",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{}
+  end
+
+  # Step 8. Label the node
+  def kubectl_label_nodes(%{kubectl_config: kubectl_config} = context) do
+    {:ok, _output} =
+      %{
+        cmd:
+          "kubectl label nodes --selector agentpool=storagepool acstor.azure.com/io-engine=acstor",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{}
+  end
+
+  # Step 9. Show node labels
+  def kubectl_show_nodes_label(%{kubectl_config: kubectl_config} = context) do
+    {:ok, _output} =
+      %{
+        cmd: "kubectl get nodes --show-labels",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{}
+  end
+
+  # Step 10.1
+  def az_check_managed_id(context) do
+    {:ok, output} =
+      %{
+        cmd:
+          "az aks show -g #{context.rg} -n #{context.aks} --out tsv --query identityProfile.kubeletidentity.objectId",
+        env: [{"AZURE_CONFIG_DIR", context.session_dir}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{managed_id: output |> String.trim()}
+  end
+
+  # Step 10.2
+  def az_check_node_resource_group(context) do
+    {:ok, output} =
+      %{
+        cmd: "az aks show -g #{context.rg} -n #{context.aks} --out tsv --query nodeResourceGroup",
+        env: [{"AZURE_CONFIG_DIR", context.session_dir}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{node_rg: output |> String.trim()}
+  end
+
+  # Step 10.3
+  # 创建了一个custom role 解决了， 创建custom role的时候 需要赋予什么权限可以根据报错信息： 'Microsoft.Authorization/roleAssignments/write'
+  # scope could be whole subscription.
+  def az_assign_contributor_role(context) do
+    {:ok, _output} =
+      %{
+        cmd:
+          "az role assignment create --assignee #{context.managed_id} --role Contributor --scope /subscriptions/#{context.sub}/resourceGroups/#{context.node_rg}",
+        env: [{"AZURE_CONFIG_DIR", context.session_dir}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{}
+  end
+
+  #########################################
+  #
   # For testing only to test how to handle a step failed
   def dummy_step_will_fail(%{} = _context) do
     Process.sleep(10_000)
