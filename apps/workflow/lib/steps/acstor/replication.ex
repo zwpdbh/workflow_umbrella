@@ -426,6 +426,8 @@ defmodule Steps.Acstor.Replication do
   # Create Storage Class
   #########################################
   def create_storage_class(%{kubectl_config: kubectl_config, session_dir: session_dir} = context) do
+    storage_class_name = "acstor-replication"
+
     storage_pool_yaml =
       Path.join([
         File.cwd!(),
@@ -434,7 +436,7 @@ defmodule Steps.Acstor.Replication do
       ])
       |> File.read!()
       |> EEx.eval_string(
-        %{}
+        %{storage_class_name: storage_class_name}
         |> Enum.into([], fn {k, v} -> {k, v} end)
       )
 
@@ -453,8 +455,12 @@ defmodule Steps.Acstor.Replication do
       |> Map.merge(context)
       |> Exec.run()
 
-    %{}
+    %{storage_class: storage_class_name}
   end
+
+  #########################################
+  # Create PVC
+  #########################################
 
   #########################################
   #
