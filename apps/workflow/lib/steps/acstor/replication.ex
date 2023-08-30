@@ -143,7 +143,7 @@ defmodule Steps.Acstor.Replication do
     }
   end
 
-  # Step 5: Add node pool
+  # Step 5.1: Add node pool with 3 nodes
   def az_add_node_pool(%{
         aks: aks,
         rg: rg,
@@ -509,13 +509,34 @@ defmodule Steps.Acstor.Replication do
     end
   end
 
-  def get_random_pvc_size() do
+  defp get_random_pvc_size() do
     sizes = for n <- 100..1000, rem(n, 100) == 0, do: "#{n}Gi"
     sizes |> Enum.random()
   end
 
-  def get_random_pvc_name() do
+  defp get_random_pvc_name() do
     "pvc-#{get_random_str()}"
+  end
+
+  #########################################
+  # Create Pod
+  #########################################
+
+  def get_current_nodes(%{kubectl_config: kubectl_config} = context) do
+    # get the node names related with "storagepool"
+    {:ok, output} =
+      %{
+        cmd: "kubectl get nodes | grep storagepool",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    regex = ~r/aks-storagepool-\d+-vmss\d+/
+    matches = Regex.scan(regex, output)
+
+    nodes_name = Enum.map(matches, fn [match] -> String.trim(match) end)
+    %{aks_nodes: nodes_name}
   end
 
   #########################################
