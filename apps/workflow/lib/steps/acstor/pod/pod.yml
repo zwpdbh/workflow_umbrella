@@ -17,4 +17,4 @@ spec:
         - mountPath: "/volume" 
           name: ms-volume 
   nodeSelector: 
-    targetNode: <%= node_tag %> 
+    targetNode: <%= node_label %> 

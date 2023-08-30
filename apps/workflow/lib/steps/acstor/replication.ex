@@ -518,6 +518,10 @@ defmodule Steps.Acstor.Replication do
     "pvc-#{get_random_str()}"
   end
 
+  defp get_random_pod_name() do
+    "pod-#{get_random_str()}"
+  end
+
   #########################################
   # Create Pod
   #########################################
@@ -573,15 +577,182 @@ defmodule Steps.Acstor.Replication do
     %{}
   end
 
-  # def create_pod_on_some_node(
-  #       %{aks_node_tag_registry: aks_node_tag_registry, kubectl_config: kubectl_config} = context
-  #     ) do
-  #   %{node_name: node_name, tag: tag} =
-  #     aks_node_tag_registry
-  #     |> Enum.random()
+  def create_pod_on_some_node(
+        %{
+          kubectl_config: kubectl_config,
+          session_dir: session_dir
+        } = context
+      ) do
+    available_node = get_available_node(context)
 
-  #   %{}
-  # end
+    if available_node == nil do
+      raise "There is no available node to create, the current pod_node_registry is: #{inspect(context.pod_node_registry)} "
+    end
+
+    available_pvc = get_avaiable_pvc(context)
+
+    if available_pvc == nil do
+      raise "There is no available PVC to create pod, the current pod_pvc_registry is: #{inspect(context.pod_pvc_registry)}"
+    end
+
+    pod_name = get_random_pod_name()
+
+    %{label: label} =
+      context.aks_node_label_registry
+      |> Enum.find(fn %{node_name: node_name} -> node_name == available_node end)
+
+    pod_yaml =
+      Path.join([
+        File.cwd!(),
+        "apps/workflow/lib/steps/acstor/pod",
+        "pod.yml"
+      ])
+      |> File.read!()
+      |> EEx.eval_string(
+        %{pod_name: pod_name, node_label: label, pvc_name: available_pvc}
+        |> Enum.into([], fn {k, v} -> {k, v} end)
+      )
+
+    pod_yaml_file = Path.join([session_dir, "#{pod_name}.yml"])
+
+    Steps.LogBackend.log_to_file(
+      %{log_file: pod_yaml_file, content: pod_yaml},
+      :write
+    )
+
+    {:ok, _output} =
+      %{
+        cmd: "kubectl apply -f  #{pod_yaml_file}",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    case context do
+      %{pod_node_registry: pod_node_registry, pod_pvc_registry: pod_pvc_registry} ->
+        %{
+          pod_pvc_registry: [%{pod_name: pod_name, pvc_name: available_pvc} | pod_pvc_registry],
+          pod_node_registry: [
+            %{pod_name: pod_name, node_name: available_node} | pod_node_registry
+          ]
+        }
+
+      _ ->
+        %{
+          pod_pvc_registry: [%{pod_name: pod_name, pvc_name: available_pvc}],
+          pod_node_registry: [%{pod_name: pod_name, node_name: available_node}]
+        }
+    end
+  end
+
+  defp get_available_node(%{aks_node_label_registry: aks_node_label_registry} = context) do
+    case Map.get(context, :pod_node_registry) do
+      # If there is no pod associated with pvc, we could select any of them
+      nil ->
+        %{node_name: node_name} =
+          aks_node_label_registry
+          |> Enum.random()
+
+        node_name
+
+      pod_node_registry ->
+        nodes_in_use = pod_node_registry |> Enum.map(&Map.get(&1, :node_name))
+
+        aks_node_label_registry
+        |> Enum.map(&Map.get(&1, :node_name))
+        |> Enum.reject(&(&1 in nodes_in_use))
+        |> List.first()
+    end
+  end
+
+  defp get_avaiable_pvc(%{pvc_settings: pvc_settings} = context) do
+    case Map.get(context, :pod_pvc_registry) do
+      # If there is no pod associated with pvc, we could select any of them
+      nil ->
+        %{pvc_name: pvc_name} = pvc_settings |> Enum.random()
+        pvc_name
+
+      pod_pvc_registry ->
+        pvc_names_in_use = pod_pvc_registry |> Enum.map(&Map.get(&1, :pvc_name))
+
+        pvc_settings
+        |> Enum.map(&Map.get(&1, :pvc_name))
+        |> Enum.reject(&(&1 in pvc_names_in_use))
+        |> List.first()
+    end
+  end
+
+  def kubectl_get_pods(%{kubectl_config: kubectl_config} = context) do
+    {:ok, _output} =
+      %{
+        cmd: "kubectl get pods -o wide",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{}
+  end
+
+  #########################################
+  # Run fio
+  #########################################
+
+  def run_fio(%{pod_node_registry: pod_node_registry, kubectl_config: kubectl_config} = context) do
+    %{pod_name: pod_name} = pod_node_registry |> Enum.random()
+
+    fio_cmd = """
+    kubectl exec -it #{pod_name} -- fio \
+    --name=benchtest --size=2g \
+    --filename=/volume/test \
+    --direct=1 --rw=randrw --rwmixread=30 \
+    --ioengine=libaio --bs=4k --iodepth=8 \
+    --numjobs=1 --time_based \
+    --runtime=60 \
+    --verify_backlog=4096 \
+    --serialize_overlap=1 \
+    --do_verify=1 \
+    --verify=crc32 --group_reporting
+    """
+
+    {:ok, _output} =
+      %{
+        cmd: fio_cmd,
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{}
+  end
+
+  def get_acstor_api_value(%{kubectl_config: kubectl_config} = context) do
+    {:ok, acstor_api} =
+      %{
+        cmd: "kubectl get pod -n acstor | grep api-rest",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{acstor_api_value: acstor_api}
+  end
+
+  def forward_acstor_api_pod_to_host(
+        %{kubectl_config: kubectl_config, acstor_api_value: acstor_api_value} = context
+      ) do
+    host_port = 9096
+
+    {:ok, _output} =
+      %{
+        cmd: "kubectl port-forward #{acstor_api_value} -n acstor #{host_port}:8081",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{acstor_api_host_port: host_port}
+  end
 
   #########################################
   #

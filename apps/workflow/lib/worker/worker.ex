@@ -123,15 +123,14 @@ defmodule Worker do
 
   @impl true
   def terminate(
-        {err,
-         [{which_module, which_function, _arity, [file: _filename, line: _line_num]} | _rest] =
-           _stacktrace} = _reason,
+        {err, stacktrace} = _reason,
         %{symbol: symbol, history: history} = state
       ) do
     {:ok, worker_leader_pid} = Worker.Leader.get_leader_pid_from_symbol(symbol)
 
-    case err do
-      {:badmatch, {:err, step_output}} ->
+    case {err, stacktrace} do
+      {{:badmatch, {:err, step_output}},
+       [{which_module, which_function, _arity, [file: _filename, line: _line_num]} | _rest]} ->
         Logger.warn("step error in #{which_module}.#{which_function}: #{step_output}")
 
         # Don't forget to update failed step into history
@@ -145,7 +144,18 @@ defmodule Worker do
           history: history
         })
 
-      unknow_error ->
+      {:undef, [{which_module, which_function, _}]} ->
+        notic_leader_worker_error(%{
+          leader: worker_leader_pid,
+          which_module: Atom.to_string(which_module),
+          which_function: Atom.to_string(which_function),
+          step_output: nil,
+          worker_state: state,
+          history: history
+        })
+
+      {unknow_error,
+       [{which_module, which_function, _arity, [file: _filename, line: _line_num]} | _rest]} ->
         Logger.debug("unknow error #{inspect(unknow_error)}")
 
         notic_leader_worker_error(%{
@@ -153,6 +163,18 @@ defmodule Worker do
           which_module: Atom.to_string(which_module),
           which_function: Atom.to_string(which_function),
           step_output: unknow_error,
+          worker_state: state,
+          history: history
+        })
+
+      {unknow_error, [top_stacktrace | _rest]} ->
+        Logger.debug("unknow error #{inspect(unknow_error)}")
+
+        notic_leader_worker_error(%{
+          leader: worker_leader_pid,
+          which_module: "unknow",
+          which_function: "unknow",
+          step_output: "#{inspect(top_stacktrace)}",
           worker_state: state,
           history: history
         })

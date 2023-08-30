@@ -119,7 +119,7 @@ Workflow.start_scenario(symbol)
 # Create a workflow which only has one symbol 
 %{
   symbol: symbol,
-  workflow_definition: [{"Steps.Acstor.Replication", "label_nodes_with_labels"}]
+  workflow_definition: [{"Steps.Acstor.Replication", "get_acstor_api_value"}]
 }
 |> Worker.Leader.add_workflow_for_symbol()
 
@@ -138,11 +138,11 @@ Worker.Leader.execute_workflows_for_symbol(symbol)
 {:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
 
 state = Worker.worker_state(worker_pid)
-state.history
+state.step_context
 ```
 
 ```elixir
-state.step_context
+state.history
 ```
 
 <!-- livebook:{"branch_parent_index":4} -->
@@ -158,12 +158,23 @@ Worker.Leader.leader_state(symbol)
 ## (optional) add extra context to worker
 
 ```elixir
-# Add extra context 
+# Add extra context or overwrite 
 {:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+update_context = %{
+  pod_node_registry: [
+    %{node_name: "aks-storagepool-11078561-vmss000001", pod_name: "pod-0zbdo1"},
+    %{node_name: "aks-storagepool-11078561-vmss000002", pod_name: "pod-z0ci58"}
+  ],
+  pod_pvc_registry: [
+    %{pod_name: "pod-0zbdo1", pvc_name: "pvc-ow5i0b"},
+    %{pod_name: "pod-z0ci58", pvc_name: "pvc-eo816g"}
+  ]
+}
 
 if Process.alive?(worker_pid) do
   # check worker context
-  Worker.add_worker_context(worker_pid, %{disk_type: "azure_disk"})
+  Worker.add_worker_context(worker_pid, update_context)
 end
 ```
 
@@ -296,9 +307,37 @@ So, we need to save our state to leader in the callback.
 state = Worker.worker_state(worker_pid)
 
 state.step_context
-|> Steps.Acstor.Replication.label_nodes_with_tags()
+|> Steps.Acstor.Replication.test_kubectl()
 ```
 
 ```elixir
-Steps.Acstor.Replication.get_random_pvc_name()
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+state = Worker.worker_state(worker_pid)
+
+state.step_context
+|> Steps.Acstor.Replication.get_acstor_api_value()
+```
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+state = Worker.worker_state(worker_pid)
+
+state.step_context
+|> Map.merge(%{
+  pod_node_registry: [
+    %{node_name: "aks-storagepool-11078561-vmss000000", pod_name: "pod_01"},
+    %{node_name: "aks-storagepool-11078561-vmss000001", pod_name: "pod_02"}
+  ]
+})
+|> Steps.Acstor.Replication.get_available_node()
+```
+
+```elixir
+aks_node_label_registry: [
+    %{label: "node0", node_name: "aks-storagepool-11078561-vmss000000", selector: "targetNode"},
+    %{label: "node1", node_name: "aks-storagepool-11078561-vmss000001", selector: "targetNode"},
+    %{label: "node2", node_name: "aks-storagepool-11078561-vmss000002", selector: "targetNode"}
+  ]
 ```
