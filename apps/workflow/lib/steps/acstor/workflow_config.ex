@@ -3,6 +3,14 @@ defmodule Steps.Acstor.WorkflowConfig do
   Based on some configuration to generate different kind of workflows
   """
 
+  def dummy_workflow() do
+    1..10
+    |> Enum.to_list()
+    |> Enum.map(fn _ ->
+      {"Steps.Acstor.Replication", "small_sleep"}
+    end)
+  end
+
   def simple_replication() do
     [
       "az_login_using_sp",

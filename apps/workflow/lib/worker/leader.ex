@@ -11,7 +11,8 @@ defmodule Worker.Leader do
               # aa is %{}
               workflows_in_progress: %{},
               workflows_todo: [],
-              workflows_finished: []
+              workflows_finished: [],
+              symbol_execution_enabled: true
   end
 
   def start_link(symbol) do
@@ -29,17 +30,28 @@ defmodule Worker.Leader do
         %{
           symbol: symbol,
           worker_registry: worker_registry,
-          workflows_in_progress: workflow_in_progress
+          workflows_in_progress: workflows_in_progress
         } = state
       ) do
     settings = fetch_symbol_settings(symbol)
     worker_state = fresh_worker_state(settings)
 
-    updated_worker_registry =
-      init_worker_registry(settings.n_workers, worker_registry, worker_state)
-
-    updated_workflows_in_progress =
-      init_workflows_in_progress(settings.n_workers, workflow_in_progress)
+    %{
+      worker_registry: updated_worker_registry,
+      workflows_in_progress: updated_workflows_in_progress
+    } =
+      1..settings.n_workers
+      |> Enum.to_list()
+      |> Enum.reduce(
+        %{worker_registry: worker_registry, workflows_in_progress: workflows_in_progress},
+        fn _, acc ->
+          start_one_fresh_worker_and_update_registry(%{
+            worker_state: worker_state,
+            workflows_in_progress: acc.workflows_in_progress,
+            worker_registry: acc.worker_registry
+          })
+        end
+      )
 
     {:noreply,
      %{
@@ -48,39 +60,6 @@ defmodule Worker.Leader do
          worker_registry: updated_worker_registry,
          workflows_in_progress: updated_workflows_in_progress
      }}
-
-    # {:noreply, %{state | settings: settings}}
-  end
-
-  # We shall maintain our own worker registering logic
-  # Do not name process create dynamically (do not naming worker process)
-  defp init_worker_registry(n_workers, worker_registry, worker_state) do
-    1..n_workers
-    |> Enum.to_list()
-    |> Enum.reduce(
-      worker_registry,
-      fn index, acc ->
-        {:ok, worker_pid} =
-          Map.merge(worker_state, %{name: "worker#{index}"}) |> start_new_worker()
-
-        Map.put(
-          acc,
-          "worker#{index}",
-          worker_pid
-        )
-      end
-    )
-  end
-
-  defp init_workflows_in_progress(n_workers, workflow_in_progress) do
-    1..n_workers
-    |> Enum.to_list()
-    |> Enum.reduce(
-      workflow_in_progress,
-      fn index, acc ->
-        Map.put(acc, "worker#{index}", nil)
-      end
-    )
   end
 
   defp fetch_symbol_settings(symbol) do
@@ -264,8 +243,59 @@ defmodule Worker.Leader do
   end
 
   @impl true
-  def handle_call({:leader_state}, _from, state) do
+  def handle_call({:current_state}, _from, state) do
     {:reply, state, state}
+  end
+
+  @impl true
+  def handle_call(
+        {:add_new_fresh_worker},
+        _from,
+        %{
+          workflows_in_progress: workflows_in_progress,
+          worker_registry: worker_registry,
+          symbol: symbol
+        } = state
+      ) do
+    settings = fetch_symbol_settings(symbol)
+    worker_state = fresh_worker_state(settings)
+
+    updated_registory =
+      start_one_fresh_worker_and_update_registry(%{
+        worker_state: worker_state,
+        workflows_in_progress: workflows_in_progress,
+        worker_registry: worker_registry
+      })
+
+    {:reply, updated_registory, Map.merge(state, updated_registory)}
+  end
+
+  defp start_one_fresh_worker_and_update_registry(%{
+         worker_state: worker_state,
+         workflows_in_progress: workflows_in_progress,
+         worker_registry: worker_registry
+       }) do
+    current_workers = worker_registry |> map_size()
+    new_worker_name = "worker#{current_workers + 1}"
+    {:ok, worker_pid} = Map.merge(worker_state, %{name: new_worker_name}) |> start_new_worker()
+
+    updated_worker_registry = Map.put(worker_registry, new_worker_name, worker_pid)
+    updated_workflows_in_progress = Map.put(workflows_in_progress, new_worker_name, nil)
+
+    %{
+      workflows_in_progress: updated_workflows_in_progress,
+      worker_registry: updated_worker_registry
+    }
+  end
+
+  @impl true
+  def handle_call(
+        {:toggle_symbol_execution},
+        _from,
+        %{symbol_execution_enabled: symbol_execution_enabled} = state
+      ) do
+    {:reply, not symbol_execution_enabled,
+     %{state | symbol_execution_enabled: not symbol_execution_enabled}}
   end
 
   @impl true
@@ -421,12 +451,15 @@ defmodule Worker.Leader do
     end
   end
 
-  def leader_state(symbol) do
-    GenServer.call(:"#{__MODULE__}_#{symbol}", {:leader_state})
+  def current_state(symbol) do
+    GenServer.call(:"#{__MODULE__}_#{symbol}", {:current_state})
   end
 
-  def add_workflows_for_symbol(%{symbol: symbol, workflows_definition: workflows_definition})
-      when is_list(workflows_definition) do
+  def add_workflows_for_symbol(%{
+        symbol: symbol,
+        workflows_definition: [x | _rest] = workflows_definition
+      })
+      when is_list(x) do
     workflows =
       workflows_definition
       |> Enum.map(fn each_workflow_definition ->
@@ -443,7 +476,7 @@ defmodule Worker.Leader do
     add_workflows_for_symbol(%{symbol: symbol, workflows_definition: [workflow]})
   end
 
-  def generate_steps(workflow_definition) when is_list(workflow_definition) do
+  defp generate_steps(workflow_definition) when is_list(workflow_definition) do
     workflow_definition
     |> Enum.with_index()
     |> Enum.map(fn {{which_module, which_function}, index} ->
@@ -463,7 +496,7 @@ defmodule Worker.Leader do
   end
 
   # A helper function to trigger each worker to run a todo step from its assigned workflow
-  # It will return update and return the latest workflows_in_progress
+  # It will update and return the latest workflows_in_progress
   def execute_workflows_for_symbol(symbol) do
     GenServer.call(:"#{__MODULE__}_#{symbol}", {:execute_workflows})
   end
@@ -471,5 +504,13 @@ defmodule Worker.Leader do
   # Cancel the workflow running on worker for some symbol
   def cancel_workflow(%{symbol: symbol, worker_name: worker_name}) do
     GenServer.call(:"#{__MODULE__}_#{symbol}", {:cancel_workflow, worker_name})
+  end
+
+  def toggle_symbol_execution(symbol) do
+    GenServer.call(:"#{__MODULE__}_#{symbol}", {:toggle_symbol_execution})
+  end
+
+  def add_new_fresh_worker(symbol) do
+    GenServer.call(:"#{__MODULE__}_#{symbol}", {:add_new_fresh_worker})
   end
 end

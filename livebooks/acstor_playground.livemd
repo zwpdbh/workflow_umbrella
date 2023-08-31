@@ -153,6 +153,10 @@ state.step_context.xfs_disk_pools_used_by_pod
 Worker.Leader.leader_state(symbol)
 ```
 
+```elixir
+Worker.Leader.toggle_symbol_execution(symbol)
+```
+
 <!-- livebook:{"branch_parent_index":4} -->
 
 ## (optional) add extra context to worker
@@ -681,4 +685,70 @@ state = Worker.worker_state(worker_pid)
 state.step_context
 |> Map.merge(%{})
 |> Steps.Acstor.Replication.test_kubectl()
+```
+
+## Simulate multiple workflow running
+
+```elixir
+# Settings 
+symbol = "nvme"
+```
+
+```elixir
+%{a: 1, b: 2} |> map_size
+```
+
+<!-- livebook:{"branch_parent_index":16} -->
+
+## Control Scneario execution
+
+```elixir
+Workflow.stop_scenario(symbol)
+```
+
+```elixir
+Workflow.start_scenario(symbol)
+```
+
+```elixir
+Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
+```
+
+<!-- livebook:{"branch_parent_index":16} -->
+
+## Control Leader
+
+```elixir
+alias Worker.Leader
+alias Steps.Acstor.WorkflowConfig
+```
+
+```elixir
+Leader.toggle_symbol_execution(symbol)
+```
+
+```elixir
+workflow_definitions =
+  1..7
+  |> Enum.to_list()
+  |> Enum.map(fn _ ->
+    WorkflowConfig.dummy_workflow()
+  end)
+
+Leader.add_workflows_for_symbol(%{
+  symbol: symbol,
+  workflows_definition: workflow_definitions
+})
+
+Leader.schedule_workflows(symbol)
+```
+
+```elixir
+Leader.add_new_fresh_worker(symbol)
+Leader.schedule_workflows(symbol)
+```
+
+```elixir
+Leader.current_state(symbol)
+|> Map.get(:workflows_todo)
 ```
