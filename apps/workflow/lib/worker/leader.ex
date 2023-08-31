@@ -128,6 +128,10 @@ defmodule Worker.Leader do
 
     case workflow do
       nil ->
+        Logger.debug(
+          "Get worker_step_error from worker: #{worker_name}, but there is no workflow associated with it"
+        )
+
         {:noreply, state}
 
       %{steps: steps} ->
@@ -153,6 +157,15 @@ defmodule Worker.Leader do
         # update the worker name -- worker pid register
         updated_worker_registry = Map.put(worker_registry, worker_name, new_worker_pid)
 
+        Worker.Monitor.update_from_worker(%{
+          symbol: symbol,
+          worker_name: worker_name,
+          which_module: which_module,
+          which_function: which_function,
+          step_status: "error",
+          step_output: step_output
+        })
+
         {:noreply,
          %{
            state
@@ -175,7 +188,8 @@ defmodule Worker.Leader do
         %{
           workflows_in_progress: workflows_in_progress,
           workflows_finished: workflows_finished,
-          worker_registry: worker_registry
+          worker_registry: worker_registry,
+          symbol: symbol
         } = state
       ) do
     # First, verify it is the worker we registered
@@ -188,6 +202,12 @@ defmodule Worker.Leader do
 
       {:noreply, state}
     else
+      Worker.Monitor.update_from_worker(%{
+        symbol: symbol,
+        worker_name: worker_name,
+        step_status: "succeed"
+      })
+
       %{steps: steps} = workflow = workflows_in_progress |> Map.get(worker_name)
       step_executed = Enum.at(steps, step_index)
 
@@ -220,6 +240,24 @@ defmodule Worker.Leader do
   defp all_steps_finished(steps) do
     steps
     |> Enum.all?(fn %{step_status: step_status} -> step_status != "todo" end)
+  end
+
+  defp start_one_fresh_worker_and_update_registry(%{
+         worker_state: worker_state,
+         workflows_in_progress: workflows_in_progress,
+         worker_registry: worker_registry
+       }) do
+    current_workers = worker_registry |> map_size()
+    new_worker_name = "worker#{current_workers + 1}"
+    {:ok, worker_pid} = Map.merge(worker_state, %{name: new_worker_name}) |> start_new_worker()
+
+    updated_worker_registry = Map.put(worker_registry, new_worker_name, worker_pid)
+    updated_workflows_in_progress = Map.put(workflows_in_progress, new_worker_name, nil)
+
+    %{
+      workflows_in_progress: updated_workflows_in_progress,
+      worker_registry: updated_worker_registry
+    }
   end
 
   # Callback for get a worker's pid using a name.
@@ -268,24 +306,6 @@ defmodule Worker.Leader do
       })
 
     {:reply, updated_registory, Map.merge(state, updated_registory)}
-  end
-
-  defp start_one_fresh_worker_and_update_registry(%{
-         worker_state: worker_state,
-         workflows_in_progress: workflows_in_progress,
-         worker_registry: worker_registry
-       }) do
-    current_workers = worker_registry |> map_size()
-    new_worker_name = "worker#{current_workers + 1}"
-    {:ok, worker_pid} = Map.merge(worker_state, %{name: new_worker_name}) |> start_new_worker()
-
-    updated_worker_registry = Map.put(worker_registry, new_worker_name, worker_pid)
-    updated_workflows_in_progress = Map.put(workflows_in_progress, new_worker_name, nil)
-
-    %{
-      workflows_in_progress: updated_workflows_in_progress,
-      worker_registry: updated_worker_registry
-    }
   end
 
   @impl true
@@ -420,6 +440,26 @@ defmodule Worker.Leader do
     end)
   end
 
+  @impl true
+  def handle_cast(
+        {:execute_workflow_for_worker, worker_name},
+        %{
+          workflows_in_progress: workflows_in_progress
+        } = state
+      ) do
+    # For each worker and its current workflow, run the next step which has status_todo
+
+    %{steps: steps} = Map.get(workflows_in_progress, worker_name)
+
+    step_to_execute =
+      steps
+      |> Enum.find(fn %{step_status: step_status} -> step_status == "todo" end)
+
+    # (TODO) Run the step and update workflows_in_progress
+
+    {:noreply, state}
+  end
+
   # Callback which indicate some worker is ready
   @impl true
   def handle_cast({:worker_is_ready, some_worker}, %{} = state) do
@@ -512,5 +552,9 @@ defmodule Worker.Leader do
 
   def add_new_fresh_worker(symbol) do
     GenServer.call(:"#{__MODULE__}_#{symbol}", {:add_new_fresh_worker})
+  end
+
+  def execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name}) do
+    GenServer.cast(:"#{__MODULE__}_#{symbol}", {:execute_workflow_for_worker, worker_name})
   end
 end

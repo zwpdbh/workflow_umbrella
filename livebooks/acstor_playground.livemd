@@ -750,5 +750,9 @@ Leader.schedule_workflows(symbol)
 
 ```elixir
 Leader.current_state(symbol)
-|> Map.get(:workflows_todo)
+|> Map.get(:workflows_in_progress)
+```
+
+```elixir
+Leader.execute_workflows_for_symbol(symbol)
 ```

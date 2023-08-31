@@ -160,7 +160,9 @@ defmodule Worker do
 
       {unknow_error,
        [{which_module, which_function, _arity, [file: _filename, line: _line_num]} | _rest]} ->
-        Logger.debug("unknow error #{inspect(unknow_error)}")
+        Logger.debug(
+          "unknow error in #{which_module}.#{which_function}: #{inspect(unknow_error)}"
+        )
 
         notic_leader_worker_error(%{
           leader: worker_leader_pid,
@@ -172,7 +174,7 @@ defmodule Worker do
         })
 
       {unknow_error, [top_stacktrace | _rest]} ->
-        Logger.debug("unknow error #{inspect(unknow_error)}")
+        Logger.debug("unknow error, top stacktrace: #{inspect(unknow_error)}")
 
         notic_leader_worker_error(%{
           leader: worker_leader_pid,
