@@ -351,7 +351,7 @@ defmodule Steps.Acstor.Replication do
   # Create Storage Pool
   #########################################
 
-  def number_storage_pool(disk_type) do
+  defp number_storage_pool(disk_type) do
     case disk_type do
       "nvme" -> 1
       "azure_disk" -> 3
@@ -743,6 +743,16 @@ defmodule Steps.Acstor.Replication do
     %{acstor_api_value: acstor_api}
   end
 
+  def small_sleep(_context) do
+    Process.sleep(5_000)
+    %{}
+  end
+
+  def big_sleep(_context) do
+    Process.sleep(10 * 5_000)
+    %{}
+  end
+
   def forward_acstor_api_pod_to_host(
         %{kubectl_config: kubectl_config, acstor_api_value: acstor_api_value} = context
       ) do
@@ -886,15 +896,6 @@ defmodule Steps.Acstor.Replication do
             diskes ++ acc
         end
       end)
-
-    # verify_md5_for_disk = fn disk_path ->
-    #   %{
-    #     cmd: "kubectl exec acstor-io-engine-4949p -n acstor -c io-engine -- md5sum  #{disk_path}",
-    #     env: [{"KUBECONFIG", kubectl_config}]
-    #   }
-    #   |> Map.merge(context)
-    #   |> Exec.run()
-    # end
 
     Task.Supervisor.async_stream_nolink(
       SymbolSupervisor.get_task_supervisor(symbol),
@@ -1067,8 +1068,8 @@ defmodule Steps.Acstor.Replication do
   end
 
   #########################################
-  #
-  # For testing only to test how to handle a step failed
+  # For testing only
+  #########################################
   def dummy_step_will_fail(%{} = _context) do
     Process.sleep(10_000)
 
@@ -1076,6 +1077,17 @@ defmodule Steps.Acstor.Replication do
       Exec.run(%{
         cmd: "ls non_exist_file"
       })
+
+    %{}
+  end
+
+  def test_kubectl(%{kubectl_config: kubectl_config} = context) do
+    %{
+      cmd: "kubectl get pod -n acstor | grep io-engine | wc -l",
+      env: [{"KUBECONFIG", kubectl_config}]
+    }
+    |> Map.merge(context)
+    |> Exec.run()
 
     %{}
   end
