@@ -351,16 +351,19 @@ defmodule Steps.Acstor.Replication do
   # Create Storage Pool
   #########################################
 
+  def number_storage_pool(disk_type) do
+    case disk_type do
+      "nvme" -> 1
+      "azure_disk" -> 3
+      "san" -> 3
+    end
+  end
+
   def create_storage_pool(
         %{disk_type: disk_type, kubectl_config: kubectl_config, session_dir: session_dir} =
           context
       ) do
-    num_storage_pool =
-      case disk_type do
-        "nvme" -> 1
-        "azure_disk" -> 3
-        "san" -> 3
-      end
+    num_storage_pool = number_storage_pool(disk_type)
 
     storage_pool_yaml_template =
       case disk_type do
@@ -822,11 +825,10 @@ defmodule Steps.Acstor.Replication do
     %{}
   end
 
-  # TODO : get the io engine pods
-  def get_the_io_engine_pods(%{kubectl_config: kubectl_config} = context) do
+  def list_the_io_engine_pods(%{kubectl_config: kubectl_config} = context) do
     {:ok, _output} =
       %{
-        cmd: "kubectl get pod -n acstor | grep io-engine ",
+        cmd: "kubectl get pods -n acstor | grep io-engine ",
         env: [{"KUBECONFIG", kubectl_config}]
       }
       |> Map.merge(context)
@@ -919,9 +921,150 @@ defmodule Steps.Acstor.Replication do
     %{}
   end
 
-  # defp  verify_md5_for_disk (disk_path)do
+  #########################################
+  # Rebuild
+  #########################################
 
-  # end
+  # We need to unable the node which there is no user pod created on it.
+  # For instance, the fio application is created on node0, we should NOT unlable this node.
+  # For rebuilding work, the minimum labeled node must be >= 2.
+  # Delete pod with label "io-engine" by unlabelling it.
+  def unlabel_not_used_node(%{kubectl_config: kubectl_config} = context) do
+    node_not_in_use = find_node_not_in_use(context)
+
+    {:ok, _output} =
+      %{
+        cmd: "kubectl label node #{node_not_in_use} acstor.azure.com/io-engine-",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    # case context do
+    #   %{unlabelled_nodes: nodes} -> %{unlabelled_nodes: [node_not_in_use | nodes]}
+    #   _ -> %{unlabelled_nodes: [node_not_in_use]}
+    # end
+
+    %{}
+  end
+
+  defp find_node_not_in_use(
+         %{aks_nodes: aks_nodes, pod_node_registry: pod_node_registry} = _context
+       ) do
+    node_names_in_registry =
+      pod_node_registry
+      |> Enum.map(&Map.get(&1, :node_name))
+      |> Enum.uniq()
+
+    Enum.find(aks_nodes, fn node_name ->
+      node_name not in node_names_in_registry
+    end)
+  end
+
+  defp num_replicas(replication_info) do
+    replication_info
+    |> Map.get("entries")
+    |> List.first()
+    |> Map.get("spec")
+    |> Map.get("num_replicas")
+  end
+
+  def verify_unlabel_result(
+        %{kubectl_config: kubectl_config, replication_info: replication_info} = context
+      ) do
+    replica_num = num_replicas(replication_info)
+
+    {:ok, output} =
+      %{
+        cmd: "kubectl get node --show-labels | grep io-engine | wc -l",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    if not (replica_num - 1) == output |> String.trim() |> String.to_integer() do
+      raise "after unlabel, the number of node with acstor label is not decreased"
+    end
+
+    {:ok, output} =
+      %{
+        cmd: "kubectl get pod -n acstor | grep io-engine | wc -l",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    if not (replica_num - 1) == output |> String.trim() |> String.to_integer() do
+      raise "after unlabel, the number of pod is not decreased"
+    end
+
+    %{}
+  end
+
+  def label_node_back_with_acstor(
+        %{kubectl_config: kubectl_config, replication_info: replication_info} = context
+      ) do
+    node_not_in_use = find_node_not_in_use(context)
+    replica_num = num_replicas(replication_info)
+
+    {:ok, _output} =
+      %{
+        cmd: "kubectl label node #{node_not_in_use} acstor.azure.com/io-engine=acstor",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    Process.sleep(5_000)
+    # Verify labelled result
+    {:ok, output} =
+      %{
+        cmd: "kubectl get node --show-labels | grep io-engine | wc -l",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    if not replica_num == output |> String.trim() |> String.to_integer() do
+      raise "number of nodes with acstor label is not equal the number of replicas: #{replica_num}"
+    end
+
+    {:ok, output} =
+      %{
+        cmd: "kubectl get pod -n acstor | grep io-engine | wc -l",
+        env: [{"KUBECONFIG", kubectl_config}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    if not replica_num == output |> String.trim() |> String.to_integer() do
+      raise "number of pod is not equal the number of replicas: #{replica_num}"
+    end
+
+    %{}
+  end
+
+  def verify_rebuilding_state(context) do
+    forward_acstor_api_pod_to_host(context) |> IO.inspect(label: "#{__MODULE__} 1024")
+    Process.sleep(5_000)
+    %{replication_info: updated_info} = get_replication_info(context)
+
+    nodes_not_online =
+      updated_info
+      |> Map.get("entries")
+      |> List.first()
+      |> Map.get("state")
+      |> Map.get("replica_topology")
+      |> Enum.reject(fn {_id, %{"state" => state}} -> state == "Online" end)
+
+    case nodes_not_online do
+      [] ->
+        %{replication_info: updated_info}
+
+      others ->
+        raise "Not all nodes are online: #{inspect(others)}"
+    end
+  end
 
   #########################################
   #

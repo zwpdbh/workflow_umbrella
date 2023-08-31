@@ -420,7 +420,7 @@ So, we need to save our state to leader in the callback.
 state = Worker.worker_state(worker_pid)
 
 state.step_context
-|> Steps.Acstor.Replication.run_mdf_xfs_disk_pools_used_by_pod()
+|> Steps.Acstor.Replication.verify_rebuilding_state()
 ```
 
 <!-- livebook:{"branch_parent_index":4} -->
@@ -428,7 +428,90 @@ state.step_context
 ## Tmp02
 
 ```elixir
-info = %{
+%{replication_info: info} = %{
+  replication_info: %{
+    "entries" => [
+      %{
+        "spec" => %{
+          "num_replicas" => 3,
+          "policy" => %{"self_heal" => true},
+          "size" => 858_993_459_200,
+          "status" => "Created",
+          "target" => %{"node" => "aks-storagepool-11078561-vmss000002", "protocol" => "nvmf"},
+          "thin" => true,
+          "topology" => %{
+            "pool_topology" => %{
+              "labelled" => %{
+                "exclusion" => %{},
+                "inclusion" => %{"openebs.io/created-by" => "operator-diskpool"}
+              }
+            }
+          },
+          "uuid" => "1462611c-d033-4d68-8fbe-745f00954902"
+        },
+        "state" => %{
+          "replica_topology" => %{
+            "3efa5d89-cc03-4724-8c8e-c5dc87b50934" => %{
+              "node" => "aks-storagepool-11078561-vmss000001",
+              "pool" => "csi-4vz72",
+              "state" => "Online"
+            },
+            "7c0011c8-1451-4621-9473-6d4c2075e262" => %{
+              "node" => "aks-storagepool-11078561-vmss000000",
+              "pool" => "csi-9twlz",
+              "state" => "Online"
+            },
+            "f0a2889f-eb13-4154-9d4e-a7a02ef125aa" => %{
+              "node" => "aks-storagepool-11078561-vmss000002",
+              "pool" => "csi-xlwcz",
+              "state" => "Online"
+            }
+          },
+          "size" => 858_993_459_200,
+          "status" => "Degraded",
+          "target" => %{
+            "children" => [
+              %{
+                "state" => "Online",
+                "uri" =>
+                  "bdev:////xfs-disk-pool/csi-xlwcz/f0a2889f-eb13-4154-9d4e-a7a02ef125aa?uuid=f0a2889f-eb13-4154-9d4e-a7a02ef125aa"
+              },
+              %{
+                "state" => "Online",
+                "uri" =>
+                  "nvmf://10.224.0.9:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-4vz72/3efa5d89-cc03-4724-8c8e-c5dc87b50934?uuid=3efa5d89-cc03-4724-8c8e-c5dc87b50934"
+              },
+              %{
+                "rebuildProgress" => 6,
+                "state" => "Degraded",
+                "uri" =>
+                  "nvmf://10.224.0.8:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-9twlz/7c0011c8-1451-4621-9473-6d4c2075e262?uuid=7c0011c8-1451-4621-9473-6d4c2075e262"
+              }
+            ],
+            "deviceUri" =>
+              "nvmf://10.224.0.7:8420/nqn.2019-05.io.openebs:1462611c-d033-4d68-8fbe-745f00954902",
+            "node" => "aks-storagepool-11078561-vmss000002",
+            "protocol" => "nvmf",
+            "rebuilds" => 1,
+            "size" => 858_993_459_200,
+            "state" => "Degraded",
+            "uuid" => "1bec6e85-7535-4922-9996-7c5250378599"
+          },
+          "uuid" => "1462611c-d033-4d68-8fbe-745f00954902"
+        }
+      }
+    ],
+    "next_token" => 1
+  }
+}
+```
+
+```elixir
+info
+```
+
+```elixir
+%{
   "entries" => [
     %{
       "spec" => %{
@@ -455,19 +538,19 @@ info = %{
             "pool" => "csi-4vz72",
             "state" => "Online"
           },
-          "8af9a6e9-0148-499f-9719-179dd5e0c1c2" => %{
+          "7c0011c8-1451-4621-9473-6d4c2075e262" => %{
             "node" => "aks-storagepool-11078561-vmss000000",
             "pool" => "csi-9twlz",
-            "state" => "Online"
+            "state" => "xxx"
           },
           "f0a2889f-eb13-4154-9d4e-a7a02ef125aa" => %{
             "node" => "aks-storagepool-11078561-vmss000002",
             "pool" => "csi-xlwcz",
-            "state" => "Online"
+            "state" => "xx"
           }
         },
         "size" => 858_993_459_200,
-        "status" => "Online",
+        "status" => "Degraded",
         "target" => %{
           "children" => [
             %{
@@ -478,21 +561,22 @@ info = %{
             %{
               "state" => "Online",
               "uri" =>
-                "nvmf://10.224.0.8:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-9twlz/8af9a6e9-0148-499f-9719-179dd5e0c1c2?uuid=8af9a6e9-0148-499f-9719-179dd5e0c1c2"
+                "nvmf://10.224.0.9:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-4vz72/3efa5d89-cc03-4724-8c8e-c5dc87b50934?uuid=3efa5d89-cc03-4724-8c8e-c5dc87b50934"
             },
             %{
-              "state" => "Online",
+              "rebuildProgress" => 6,
+              "state" => "Degraded",
               "uri" =>
-                "nvmf://10.224.0.9:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-4vz72/3efa5d89-cc03-4724-8c8e-c5dc87b50934?uuid=3efa5d89-cc03-4724-8c8e-c5dc87b50934"
+                "nvmf://10.224.0.8:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-9twlz/7c0011c8-1451-4621-9473-6d4c2075e262?uuid=7c0011c8-1451-4621-9473-6d4c2075e262"
             }
           ],
           "deviceUri" =>
             "nvmf://10.224.0.7:8420/nqn.2019-05.io.openebs:1462611c-d033-4d68-8fbe-745f00954902",
           "node" => "aks-storagepool-11078561-vmss000002",
           "protocol" => "nvmf",
-          "rebuilds" => 0,
+          "rebuilds" => 1,
           "size" => 858_993_459_200,
-          "state" => "Online",
+          "state" => "Degraded",
           "uuid" => "1bec6e85-7535-4922-9996-7c5250378599"
         },
         "uuid" => "1462611c-d033-4d68-8fbe-745f00954902"
@@ -501,15 +585,11 @@ info = %{
   ],
   "next_token" => 1
 }
-```
-
-```elixir
-info
 |> Map.get("entries")
 |> List.first()
 |> Map.get("state")
 |> Map.get("replica_topology")
-|> Enum.map(fn {_id, %{"pool" => pool, "node" => node}} -> %{"pool" => pool, "node" => node} end)
+|> Enum.reject(fn {_id, %{"state" => state}} -> state == "Online" end)
 ```
 
 ```elixir
