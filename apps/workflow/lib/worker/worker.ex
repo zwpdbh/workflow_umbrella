@@ -29,12 +29,16 @@ defmodule Worker do
   end
 
   @impl true
-  def handle_continue(:ask_task, %State{report_to: leader} = state) do
+  def handle_continue(
+        :ask_task,
+        %State{report_to: leader, symbol: symbol, step_context: step_contex} = state
+      ) do
     # (TODO)The place to fully initialize worker before doing task
     # Notice leader that I am ready
     GenServer.cast(leader, {:worker_is_ready, self()})
 
-    {:noreply, state}
+    updated_step_context = Map.merge(step_contex, %{symbol: symbol})
+    {:noreply, %{state | step_context: updated_step_context}}
   end
 
   # Callback for execute a step and update worker's internal state

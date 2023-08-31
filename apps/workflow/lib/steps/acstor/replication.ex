@@ -838,20 +838,90 @@ defmodule Steps.Acstor.Replication do
   # TODO use the xfs_disk_pools_used_by_pod and io engine pods to run md5
   # Also need to find the mapping of acstor-io-engine-4949p where it comes from
   def run_mdf_xfs_disk_pools_used_by_pod(
-        %{kubectl_config: kubectl_config, xfs_disk_pools_used_by_pod: _xfs_disk_pools_used_by_pod} =
-          context
+        %{
+          kubectl_config: kubectl_config,
+          xfs_disk_pools_used_by_pod: _xfs_disk_pools_used_by_pod,
+          replication_info: replication_info,
+          symbol: symbol
+        } = context
       ) do
-    {:ok, _output} =
-      %{
-        cmd:
-          "kubectl exec acstor-io-engine-4949p -n acstor -c io-engine -- ls -la  /xfs-disk-pool/csi-4vz72",
-        env: [{"KUBECONFIG", kubectl_config}]
-      }
-      |> Map.merge(context)
-      |> Exec.run()
+    node_pool_topology =
+      replication_info
+      |> Map.get("entries")
+      |> List.first()
+      |> Map.get("state")
+      |> Map.get("replica_topology")
+      |> Enum.map(fn {_id, %{"pool" => pool, "node" => node}} ->
+        %{"pool" => pool, "node" => node}
+      end)
+
+    diskes_to_verify =
+      node_pool_topology
+      |> Enum.reduce([], fn %{"pool" => pool_name}, acc ->
+        disk_path = Path.join(["xfs-disk-pool", pool_name])
+
+        result =
+          %{
+            cmd: "kubectl exec acstor-io-engine-4949p -n acstor -c io-engine -- ls #{disk_path}",
+            env: [{"KUBECONFIG", kubectl_config}]
+          }
+          |> Map.merge(context)
+          |> Exec.run()
+
+        case result do
+          {:err, _output} ->
+            acc
+
+          {:ok, output} ->
+            regex =
+              ~r/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/
+
+            diskes =
+              Regex.scan(regex, output)
+              |> Enum.map(fn [x] -> x end)
+              |> Enum.map(fn each_disk -> Path.join([disk_path, each_disk]) end)
+
+            diskes ++ acc
+        end
+      end)
+
+    # verify_md5_for_disk = fn disk_path ->
+    #   %{
+    #     cmd: "kubectl exec acstor-io-engine-4949p -n acstor -c io-engine -- md5sum  #{disk_path}",
+    #     env: [{"KUBECONFIG", kubectl_config}]
+    #   }
+    #   |> Map.merge(context)
+    #   |> Exec.run()
+    # end
+
+    Task.Supervisor.async_stream_nolink(
+      SymbolSupervisor.get_task_supervisor(symbol),
+      diskes_to_verify,
+      fn disk_path ->
+        %{
+          cmd:
+            "kubectl exec acstor-io-engine-4949p -n acstor -c io-engine -- md5sum  #{disk_path}",
+          env: [{"KUBECONFIG", kubectl_config}]
+        }
+        |> Map.merge(context)
+        |> Exec.run()
+      end,
+      max_concurrency: 1,
+      timeout: 5_000,
+      on_timeout: :kill_task,
+      zip_input_on_exit: true
+    )
+    |> Enum.reduce([], fn result, acc ->
+      [result | acc]
+    end)
+    |> IO.inspect(label: "#{__MODULE__} 908")
 
     %{}
   end
+
+  # defp  verify_md5_for_disk (disk_path)do
+
+  # end
 
   #########################################
   #

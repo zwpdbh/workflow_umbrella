@@ -279,7 +279,8 @@ update_context = %{
   sub: "d20d4862-d44e-429d-bcd7-fe71a331a8b8",
   suffix: "d29a6s",
   vm_sku: "Standard_D4s_v3",
-  xfs_disk_pools_used_by_pod: ["csi-4vz72", "csi-xlwcz"]
+  xfs_disk_pools_used_by_pod: ["csi-4vz72", "csi-xlwcz"],
+  symbol: symbol
 }
 
 if Process.alive?(worker_pid) do
@@ -287,6 +288,8 @@ if Process.alive?(worker_pid) do
   Worker.add_worker_context(worker_pid, update_context)
 end
 ```
+
+<!-- livebook:{"branch_parent_index":4} -->
 
 ## (optional) cancel workflow from worker
 
@@ -419,6 +422,10 @@ state = Worker.worker_state(worker_pid)
 state.step_context
 |> Steps.Acstor.Replication.run_mdf_xfs_disk_pools_used_by_pod()
 ```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Tmp02
 
 ```elixir
 info = %{

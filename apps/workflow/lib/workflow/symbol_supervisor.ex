@@ -16,7 +16,8 @@ defmodule SymbolSupervisor do
           DynamicSupervisor,
           strategy: :one_for_one, name: get_dynamic_worker_supervisor(symbol)
         },
-        {Worker.Leader, symbol}
+        {Worker.Leader, symbol},
+        {Task.Supervisor, name: get_task_supervisor(symbol)}
       ],
       strategy: :one_for_all
     )
@@ -24,5 +25,9 @@ defmodule SymbolSupervisor do
 
   def get_dynamic_worker_supervisor(symbol) do
     :"DynamicWorkerSupervisor_#{symbol}"
+  end
+
+  def get_task_supervisor(symbol) do
+    :"TaskSupervisor_#{symbol}"
   end
 end
