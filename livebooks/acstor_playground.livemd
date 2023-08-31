@@ -669,3 +669,16 @@ aks_node_label_registry: [
     %{label: "node2", node_name: "aks-storagepool-11078561-vmss000002", selector: "targetNode"}
   ]
 ```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## tmp kubectl
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+state = Worker.worker_state(worker_pid)
+
+state.step_context
+|> Map.merge(%{})
+|> Steps.Acstor.Replication.test_kubectl()
+```

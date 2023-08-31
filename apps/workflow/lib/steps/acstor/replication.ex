@@ -1083,7 +1083,7 @@ defmodule Steps.Acstor.Replication do
 
   def test_kubectl(%{kubectl_config: kubectl_config} = context) do
     %{
-      cmd: "kubectl get pod -n acstor | grep io-engine | wc -l",
+      cmd: "kubectl get pvc",
       env: [{"KUBECONFIG", kubectl_config}]
     }
     |> Map.merge(context)
