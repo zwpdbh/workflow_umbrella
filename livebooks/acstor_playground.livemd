@@ -740,7 +740,14 @@ Leader.add_workflows_for_symbol(%{
   workflows_definition: workflow_definitions
 })
 
-Leader.schedule_workflows(symbol)
+# Leader.schedule_workflows(symbol)
+```
+
+```elixir
+Leader.current_state(symbol)
+|> Map.get(:workflows_todo)
+|> List.first()
+|> Map.get(:steps)
 ```
 
 ```elixir
@@ -749,9 +756,9 @@ Leader.schedule_workflows(symbol)
 ```
 
 ```elixir
-Leader.current_state(symbol)
+Leader.execute_workflows_for_symbol(symbol)
 ```
 
 ```elixir
-Leader.execute_workflows_for_symbol(symbol)
+[{:a, 1}] |> Map.new(fn {k, v} -> {k, v} end)
 ```
