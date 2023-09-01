@@ -115,143 +115,22 @@ defmodule Worker.Leader do
     #   )
   end
 
-  # Callback for restart failed worker due to some error when run a step.
-  @impl true
-  def handle_info(
-        {:worker_step_error,
-         %{
-           which_module: which_module,
-           which_function: which_function,
-           step_output: step_output,
-           worker_pid: worker_pid,
-           worker_state: worker_state
-         } = _error_context},
-        %{
-          symbol: symbol,
-          worker_registry: worker_registry,
-          workflows_in_progress: workflows_in_progress
-        } = state
-      ) do
-    Logger.debug(
-      "restart worker due to step error in #{which_module}.#{which_function}: #{step_output} for symbol: #{symbol}"
-    )
+  defp process_failed_step_result(%{err: err, top_stacktrace: top_stacktrace} = _step_result) do
+    case %{err: err, top_stacktrace: top_stacktrace} do
+      %{
+        err: {:badmatch, {:err, step_output}},
+        top_stacktrace: {which_module, which_function, _arity, [file: _filename, line: _line_num]}
+      } ->
+        {Atom.to_string(which_module), Atom.to_string(which_function), step_output}
 
-    # Find the corresponding workflow by first find the name
-    {worker_name, _worker_pid} =
-      worker_registry
-      |> Enum.find(fn {_worker_name, pid} -> worker_pid == pid end)
+      %{
+        err: :undef,
+        top_stacktrace: {which_module, which_function, _}
+      } ->
+        {Atom.to_string(which_module), Atom.to_string(which_function), "undefined function"}
 
-    workflow = Map.get(workflows_in_progress, worker_name)
-
-    case workflow do
-      nil ->
-        Logger.debug(
-          "Get worker_step_error from worker: #{worker_name}, but there is no workflow associated with it"
-        )
-
-        {:noreply, state}
-
-      %{steps: steps} ->
-        step_index =
-          steps |> Enum.find_index(fn %{step_status: status} -> status == "in_progress" end)
-
-        updated_step =
-          Enum.at(steps, step_index)
-          |> Map.put(:step_status, "failed")
-
-        # TODO: check some policy service to see if there is retry defined for it.
-        # If there is no retry remained, remove the workflow from workflow_in_progress to workflow_finished
-        # Otherwise, keep it in the workflow_in_progress.
-
-        updated_steps = List.replace_at(steps, step_index, updated_step)
-
-        # TODO: rewrite this into one step.
-        updated_workflow = %{workflow | steps: updated_steps}
-        updated_workflows_in_progress = %{workflows_in_progress | worker_name => updated_workflow}
-
-        {:ok, new_worker_pid} = start_new_worker(worker_state)
-
-        # update the worker name -- worker pid register
-        updated_worker_registry = Map.put(worker_registry, worker_name, new_worker_pid)
-
-        Worker.Collector.update_from_worker(%{
-          symbol: symbol,
-          worker_name: worker_name,
-          which_module: which_module,
-          which_function: which_function,
-          step_status: "error",
-          step_output: step_output
-        })
-
-        {:noreply,
-         %{
-           state
-           | worker_registry: updated_worker_registry,
-             workflows_in_progress: updated_workflows_in_progress
-         }}
-    end
-  end
-
-  # Callback from worker to notice leader that the step from workflow is finished
-  @impl true
-  def handle_info(
-        {:worker_step_finished,
-         %{
-           worker_pid: worker_pid,
-           worker_name: worker_name,
-           step_index: step_index,
-           step_status: step_status
-         }},
-        %{
-          workflows_in_progress: workflows_in_progress,
-          workflows_finished: workflows_finished,
-          worker_registry: worker_registry,
-          symbol: symbol
-        } = state
-      ) do
-    # First, verify it is the worker we registered
-    registered_worker_pid = Map.get(worker_registry, worker_name)
-
-    if worker_pid != registered_worker_pid do
-      Logger.warn(
-        "Receive :worker_step_finished from unknow worker: #{inspect(Map.get(worker_registry, worker_name))}, ignored"
-      )
-
-      {:noreply, state}
-    else
-      # Notify the moitor about the some step from some worker is executed succeed
-      Worker.Collector.update_from_worker(%{
-        symbol: symbol,
-        worker_name: worker_name,
-        step_status: "succeed"
-      })
-
-      workflow = workflows_in_progress |> Map.get(worker_name)
-      step_executed = Enum.at(workflow.steps, step_index)
-
-      updated_steps =
-        List.replace_at(workflow.steps, step_index, %{step_executed | step_status: step_status})
-
-      updated_workflow = %{workflow | steps: updated_steps}
-
-      case all_steps_finished(updated_steps) do
-        true ->
-          updated_workflows_finished = [updated_workflow | workflows_finished]
-          updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, nil)
-
-          {:noreply,
-           %{
-             state
-             | workflows_finished: updated_workflows_finished,
-               workflows_in_progress: updated_workflows_in_progress
-           }}
-
-        false ->
-          updated_workflows_in_progress =
-            Map.put(workflows_in_progress, worker_name, updated_workflow)
-
-          {:noreply, %{state | workflows_in_progress: updated_workflows_in_progress}}
-      end
+      _ ->
+        {"unknow_module", "unknow_function", "top_stacktrace: #{inspect(top_stacktrace)}"}
     end
   end
 
@@ -306,6 +185,39 @@ defmodule Worker.Leader do
       workflows_todo: updated_workflows_todo,
       workflows_in_progress: updated_workflows_in_progress
     }
+  end
+
+  defp find_next_step(steps) do
+    steps
+    |> Enum.find(fn %{step_status: status} ->
+      status == "todo" or status == "in_progress" or status == "failed"
+    end)
+  end
+
+  defp run_next_step_for_worker(worker_name, steps, %{worker_registry: worker_registry} = state) do
+    worker_pid = Map.get(worker_registry, worker_name)
+
+    next_step = find_next_step(steps)
+
+    case next_step.step_status do
+      x when x in ["todo", "failed"] ->
+        Worker.run_step_with_id(
+          Map.merge(next_step, %{worker_pid: worker_pid, worker_name: worker_name})
+        )
+
+        # update workflows_in_progress
+        updated_steps =
+          List.replace_at(steps, next_step.step_index, %{
+            next_step
+            | step_status: "in_progress"
+          })
+
+        put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+
+      "in_progress" ->
+        # If previous step still in progress, we keep don't do anything
+        state
+    end
   end
 
   # Callback for get a worker's pid using a name.
@@ -414,39 +326,6 @@ defmodule Worker.Leader do
      }}
   end
 
-  defp find_next_step(steps) do
-    steps
-    |> Enum.find(fn %{step_status: status} ->
-      status == "todo" or status == "in_progress" or status == "failed"
-    end)
-  end
-
-  defp run_next_step_for_worker(worker_name, steps, %{worker_registry: worker_registry} = state) do
-    worker_pid = Map.get(worker_registry, worker_name)
-
-    next_step = find_next_step(steps)
-
-    case next_step.step_status do
-      x when x in ["todo", "failed"] ->
-        Worker.run_step_with_id(
-          Map.merge(next_step, %{worker_pid: worker_pid, worker_name: worker_name})
-        )
-
-        # update workflows_in_progress
-        updated_steps =
-          List.replace_at(steps, next_step.step_index, %{
-            next_step
-            | step_status: "in_progress"
-          })
-
-        put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
-
-      "in_progress" ->
-        # If previous step still in progress, we keep don't do anything
-        state
-    end
-  end
-
   @impl true
   def handle_cast(
         {:execute_workflow_for_worker, worker_name},
@@ -485,6 +364,89 @@ defmodule Worker.Leader do
         # Default one
         Logger.debug("#{__MODULE__} in handle_cast :execute_workflow_for_worker, unexpected")
         {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_cast(
+        {:worker_step_succeed, %{worker_name: worker_name, worker_pid: worker_pid} = step_result},
+        %{worker_registry: worker_registry, workflows_in_progress: workflows_in_progress} = state
+      ) do
+    registered_worker_pid = Map.get(worker_registry, worker_pid)
+
+    if worker_pid != registered_worker_pid do
+      Logger.warn(
+        "Receive :worker_step_finished from unknow worker: #{inspect(Map.get(worker_registry, worker_name))}, ignored"
+      )
+
+      {:noreply, state}
+    else
+      workflow = workflows_in_progress |> Map.get(worker_name)
+      step_executed = Enum.at(workflow.steps, step_result.step_index)
+
+      updated_steps =
+        List.replace_at(workflow.steps, step_result.step_index, %{
+          step_executed
+          | step_status: "succeed"
+        })
+
+      updated_state = put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+      {:noreply, updated_state}
+    end
+  end
+
+  @impl true
+  def handle_cast(
+        {:worker_step_failed, %{worker_name: worker_name, worker_pid: worker_pid} = step_result},
+        %{worker_registry: worker_registry, workflows_in_progress: workflows_in_progress} = state
+      ) do
+    {:noreply, state}
+    registered_worker_pid = Map.get(worker_registry, worker_pid)
+
+    if worker_pid != registered_worker_pid do
+      Logger.warn(
+        "Receive :worker_step_finished from unknow worker: #{inspect(Map.get(worker_registry, worker_name))}, ignored"
+      )
+
+      {:noreply, state}
+    else
+      # Find out which step failed from which workflow
+
+      workflow = Map.get(workflows_in_progress, worker_name)
+      # The failed step must come from a step which is still in "in_progress" status
+
+      index_for_step_in_progress =
+        workflow.steps
+        |> Enum.find_index(fn %{step_status: status} -> status == "in_progress" end)
+
+      # update the step status
+      step_executed = Enum.at(workflow.steps, index_for_step_in_progress)
+      # update the workflow steps
+      updated_steps =
+        List.replace_at(workflow.steps, step_result.step_index, %{
+          step_executed
+          | step_status: "failed"
+        })
+
+      # Need to restart a new worker
+      crashed_worker_state = step_result.worker_state
+      step_failure_history = process_failed_step_result(step_result)
+
+      # the new worker will contain updated history to include the failed step
+      updated_worker_state = %{
+        state
+        | history: [step_failure_history | crashed_worker_state.history]
+      }
+
+      {:ok, new_worker_pid} = start_new_worker(updated_worker_state)
+
+      # update the worker name -- worker pid register
+      updated_worker_registry = Map.put(worker_registry, worker_name, new_worker_pid)
+
+      updated_state = put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+      updated_state = put_in(updated_state, [:worker_registry], updated_worker_registry)
+
+      {:noreply, updated_state}
     end
   end
 
@@ -604,5 +566,13 @@ defmodule Worker.Leader do
 
   def execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name}) do
     GenServer.cast(:"#{__MODULE__}_#{symbol}", {:execute_workflow_for_worker, worker_name})
+  end
+
+  def worker_step_succeed(%{symbol: symbol} = result) do
+    GenServer.cast(:"#{__MODULE__}_#{symbol}", {:worker_step_succeed, result})
+  end
+
+  def worker_step_failed(%{symbol: symbol} = result) do
+    GenServer.cast(:"#{__MODULE__}_#{symbol}", {:worker_step_failed, result})
   end
 end

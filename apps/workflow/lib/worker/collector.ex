@@ -28,23 +28,32 @@ defmodule Worker.Collector do
     {:reply, state, state}
   end
 
-  # Callback for handling step error
   @impl true
   def handle_cast(
-        {:update_from_worker,
-         %{
-           symbol: symbol,
-           worker_name: worker_name,
-           step_status: "error",
-           which_module: which_module,
-           which_function: which_function,
-           step_output: step_output
-         }},
+        {:worker_report_step_succeed, %{symbol: symbol, worker_name: worker_name} = step_result},
         state
       ) do
-    Logger.debug(
-      "#{symbol} -- update step error from worker: #{worker_name}, #{which_module}.#{which_function}, output: #{step_output}"
-    )
+    Worker.Leader.worker_step_succeed(step_result)
+    Worker.Leader.schedule_workflows(symbol)
+    Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(
+        {:worker_report_step_crash, %{symbol: symbol, worker_name: worker_name} = step_result},
+        state
+      ) do
+    # a worker report one step executed succeed.
+    # TODO:: talk to leader what to do next about it
+
+    # For a failed step execute, don't forget to update worker's history.
+    # Because the worker doesn't have the entire picture, and its process terminated. So we need to recover its history.
+    # We need to let leader to start a new worker with updated history
+    Worker.Leader.worker_step_failed(step_result)
+    Worker.Leader.schedule_workflows(symbol)
+    Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
 
     {:noreply, state}
   end
@@ -94,5 +103,17 @@ defmodule Worker.Collector do
     symbol
     |> get_collector_pid_for_symbol
     |> GenServer.cast({:set_leader_state, leader_state_info})
+  end
+
+  def report_step_for_symbol(symbol, {:worker_report_step_succeed, step_result}) do
+    symbol
+    |> get_collector_pid_for_symbol
+    |> GenServer.cast({:worker_report_step_succeed, step_result})
+  end
+
+  def report_step_for_symbol(symbol, {:worker_report_step_crash, step_result}) do
+    symbol
+    |> get_collector_pid_for_symbol
+    |> GenServer.cast({:worker_report_step_crash, step_result})
   end
 end
