@@ -46,7 +46,8 @@ defmodule Workflow.MixProject do
       {:httpoison, "~> 2.0"},
       {:tzdata, "~> 1.1"},
       {:timex, "~> 3.0"},
-      {:playground, in_umbrella: true}
+      {:playground, in_umbrella: true},
+      {:accessible, "~> 0.3.0"}
     ]
   end
 

@@ -12,15 +12,15 @@ defmodule SymbolSupervisor do
 
     Supervisor.init(
       [
+        {Worker.Monitor, symbol},
         {
           DynamicSupervisor,
           strategy: :one_for_one, name: get_dynamic_worker_supervisor(symbol)
         },
         {Worker.Leader, symbol},
-        {Worker.Monitor, symbol},
         {Task.Supervisor, name: get_task_supervisor(symbol)}
       ],
-      strategy: :one_for_all
+      strategy: :one_for_one
     )
   end
 
