@@ -19,8 +19,8 @@ defmodule Steps.Common.Time do
     "#{dt.year}-#{dt.month}-#{dt.day}"
   end
 
-  def get_current_datetime_str() do
-    {:ok, dt} = Steps.Common.Time.get_current_datetime()
+  def get_current_datetime_str(timezone \\ "Asia/Shanghai") do
+    {:ok, dt} = Steps.Common.Time.get_current_datetime(timezone)
     "#{dt.year}-#{dt.month}-#{dt.day}_#{dt.hour}-#{dt.minute}-#{dt.second}"
   end
 end

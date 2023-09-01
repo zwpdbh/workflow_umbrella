@@ -4,6 +4,7 @@ defmodule Steps.Exec do
   @moduledoc """
   For execute shell command from elixir
   """
+  alias Steps.LogBackend
 
   # When running command with special context
   def run(%{cmd: cmd_str, log_file: log_file, env: env_settings}) when is_list(env_settings) do
@@ -37,7 +38,14 @@ defmodule Steps.Exec do
   # And return the output
   defp run_aux(%{cmd: cmd_str, log_file: log_file, env: env_settings}) do
     Logger.info("#{cmd_str}")
-    Steps.LogBackend.log_to_file(%{log_file: log_file, content: "$#{cmd_str}"})
+
+    timestamp_str = LogBackend.generate_local_timestamp()
+
+    # also record the command we executed into log file
+    Steps.LogBackend.log_to_file(%{
+      log_file: log_file,
+      content: "#{timestamp_str} $#{cmd_str}"
+    })
 
     {output, status} =
       case env_settings do

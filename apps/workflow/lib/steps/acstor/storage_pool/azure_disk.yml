@@ -1,0 +1,11 @@
+apiVersion: containerstorage.azure.com/v1alpha1 
+kind: StoragePool 
+metadata: 
+  name: <%= storage_pool_name %>
+  namespace: acstor 
+spec: 
+  resources: 
+    requests: 
+      storage: 10Ti 
+  poolType: 
+    azureDisk: {}
