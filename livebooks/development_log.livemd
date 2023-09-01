@@ -60,13 +60,13 @@ iex --name myapp@localhost --cookie some_token -S mix
 
 ### Troubleshootings
 
-* Error when `docker-compose up -d`, shows \
+- Error when `docker-compose up -d`, shows \
   docker.credentials.errors.InitializationError: docker-credential-desktop.exe not installed or not available in PATH
 
   Solution:
 
-  * `vi ~/.docker/config.json`
-  * Change `credsStore` to `credStore`.
+  - `vi ~/.docker/config.json`
+  - Change `credsStore` to `credStore`.
 
   After the modification,
 
@@ -96,13 +96,13 @@ docker run \
 ghcr.io/livebook-dev/livebook:0.8.1
 ```
 
-* `--network` specify the docker container we run use [Host network driver](https://docs.docker.com/network/drivers/host/).
+- `--network` specify the docker container we run use [Host network driver](https://docs.docker.com/network/drivers/host/).
 
-* Those LIVEBOOK options are from [Livebook README](https://github.com/livebook-dev/livebook).
+- Those LIVEBOOK options are from [Livebook README](https://github.com/livebook-dev/livebook).
 
-* Tag `0.8.1` from Livebook image support OTP25.
+- Tag `0.8.1` from Livebook image support OTP25.
 
-* If succeed, it should oupt something like:
+- If succeed, it should oupt something like:
 
   ```sh
   [Livebook] Application running at http://0.0.0.0:8080/?token=gwc234cmrxsfnqkaeeu6hv7wjhg3qe2g
@@ -139,16 +139,16 @@ In Phoenix, contexts often encapsulate data access and data validation. They oft
 
 #### Relative components
 
-* A `Worker`
-  * A worker is a `GenServer` process.
-* A `Step` is a pure function executed by a worker.
-* A `Workflow` is consisted of a series of steps.
-  * It is the event a worker need to process.
-  * Each step dependents on the execution of previous one.
-* A `Scenario` is a group of `Workflows`.
-  * Each execution of `Workflow` is independent of each other.
-  * In other words, the `Workflow`s with a common topic/tag is a scenario.
-* A `Streamer` is a service broadcast `Workflows`.
+- A `Worker`
+  - A worker is a `GenServer` process.
+- A `Step` is a pure function executed by a worker.
+- A `Workflow` is consisted of a series of steps.
+  - It is the event a worker need to process.
+  - Each step dependents on the execution of previous one.
+- A `Scenario` is a group of `Workflows`.
+  - Each execution of `Workflow` is independent of each other.
+  - In other words, the `Workflow`s with a common topic/tag is a scenario.
+- A `Streamer` is a service broadcast `Workflows`.
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -156,25 +156,25 @@ In Phoenix, contexts often encapsulate data access and data validation. They oft
 
 How components connected?
 
-* `Streamer` broadcast `Workflows` with multiple topics.
-* Three components
-  * A `Worker.Leader` could subscribe only one topic
-    * It keep monitoring and save each worker's state.
-    * Assign a workload to a worker.
-  * A `Worker.DynamicWorkerSuperivor` - because we need to start workers using `DynamicSupervisor` dynamically.
-  * Multiple `Worker`s to execute `Workload`s distributed to them.
-* For each scenario(symbol), we will need above 3 components.
-  * To effectiviely initialize them, we will add `SymbolSupervisor`, it will start both `Worker.Leader` and `Worker.DynamicWorkerSupervisor`
-* Each `SymbolSupervisor` is started from `DynamicSymbolSupervisor`
-* `DynamicSymbolSupervisor` is started from `Workflow.Application` which is started by `Workflow` application.
+- `Streamer` broadcast `Workflows` with multiple topics.
+- Three components
+  - A `Worker.Leader` could subscribe only one topic
+    - It keep collectoring and save each worker's state.
+    - Assign a workload to a worker.
+  - A `Worker.DynamicWorkerSuperivor` - because we need to start workers using `DynamicSupervisor` dynamically.
+  - Multiple `Worker`s to execute `Workload`s distributed to them.
+- For each scenario(symbol), we will need above 3 components.
+  - To effectiviely initialize them, we will add `SymbolSupervisor`, it will start both `Worker.Leader` and `Worker.DynamicWorkerSupervisor`
+- Each `SymbolSupervisor` is started from `DynamicSymbolSupervisor`
+- `DynamicSymbolSupervisor` is started from `Workflow.Application` which is started by `Workflow` application.
 
 Summary:
 
-* `Workflow.Application` is registered on `Workflow` application and started automatically when umbrella project starts.
-* Inside `Workflow.Application` it starts a dynamic supervisor `DynamicSymbolSupervisor`.
-* For each different symbol, `DynamicSymbolSupervisor` start a `SymbolSupervisor-#{symbol}` dynamically.
-* Inside `SymbolSupervisor`, it defines how to start: `Worker.Leader` + `Worker.DynamicWorkerSupervisor`
-* Finally, `Worker.Leader` use `Worker.DynamicWorkerSupervisor` to start and manage multiple `Worker`.
+- `Workflow.Application` is registered on `Workflow` application and started automatically when umbrella project starts.
+- Inside `Workflow.Application` it starts a dynamic supervisor `DynamicSymbolSupervisor`.
+- For each different symbol, `DynamicSymbolSupervisor` start a `SymbolSupervisor-#{symbol}` dynamically.
+- Inside `SymbolSupervisor`, it defines how to start: `Worker.Leader` + `Worker.DynamicWorkerSupervisor`
+- Finally, `Worker.Leader` use `Worker.DynamicWorkerSupervisor` to start and manage multiple `Worker`.
 
 <!-- livebook:{"branch_parent_index":0} -->
 
@@ -182,13 +182,13 @@ Summary:
 
 ### Objectives
 
-* Create supervision tree to support multiple symbols (scenarios).
+- Create supervision tree to support multiple symbols (scenarios).
 
 <!-- livebook:{"break_markdown":true} -->
 
 In application `Workflow`
 
-* Edit `mix.exs` file, specify the module which defines our application
+- Edit `mix.exs` file, specify the module which defines our application
 
   ```elixir
   def application do
@@ -199,7 +199,7 @@ In application `Workflow`
   end
   ```
 
-* Edit `Workflow.Application` module
+- Edit `Workflow.Application` module
 
   ```elixir
     defmodule Workflow.Application do
@@ -222,9 +222,9 @@ In application `Workflow`
     end
   ```
 
-  * Implement `application` behaviour.
-  * Add the child process we want to supervise.
-  * Start the application supervisor with a name: `WorkflowApp.Supervisor`.
+  - Implement `application` behaviour.
+  - Add the child process we want to supervise.
+  - Start the application supervisor with a name: `WorkflowApp.Supervisor`.
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -297,9 +297,9 @@ Last message: {:continue, :start_worker}
 
 The error happended from `Worker.Leader`'s callback `handle_continue`. Inside of it: \
 
-* fetch global settings for one symbol (a scenario)
-* initialize a fresh worker state
-* use the fresh worker state to start multiple workers
+- fetch global settings for one symbol (a scenario)
+- initialize a fresh worker state
+- use the fresh worker state to start multiple workers
 
 The error happended because we forget to update the symbol into the fresh worker state. \
 By default, the default symbol for a worker state is `nil`. However, we need to update it to the symbol we used in setting.
@@ -348,8 +348,8 @@ Kino.Process.render_sup_tree(:"Elixir.SymbolSupervisor-scenario_01")
 
 Solutin:
 
-* We shouldn't call `SymbolSupervisor.start_link("scenario_01")` directly.
-* We need to call it while specifying `DynamicSymbolSupervisor` is the `DynamicSupervisor` of
+- We shouldn't call `SymbolSupervisor.start_link("scenario_01")` directly.
+- We need to call it while specifying `DynamicSymbolSupervisor` is the `DynamicSupervisor` of
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -390,26 +390,26 @@ Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 
 ### Objective
 
-* Execute 5 workloads for one scenario using 1 workers.
-* Monitor the progress of a scenario
-  * Total workloads for it.
-  * How many is running
-  * How many is executed
-  * What are the result of execution of a workload
-* Monitor the workers of a scenario
-  * How many workers in total
-  * Each worker's status
-    * Ready
-    * Busy
-    * Unavailable
-  * An worker's history
+- Execute 5 workloads for one scenario using 1 workers.
+- Collector the progress of a scenario
+  - Total workloads for it.
+  - How many is running
+  - How many is executed
+  - What are the result of execution of a workload
+- Collector the workers of a scenario
+  - How many workers in total
+  - Each worker's status
+    - Ready
+    - Busy
+    - Unavailable
+  - An worker's history
 
 <!-- livebook:{"break_markdown":true} -->
 
 ### Create some workflows from simple steps
 
-* Define some simple steps which are independent of each other.
-* Construct workflow by randomly execute steps
+- Define some simple steps which are independent of each other.
+- Construct workflow by randomly execute steps
 
 ```elixir
 alias Payload.{SimpleWorkflow, SimpleSteps}
@@ -438,9 +438,9 @@ apply(String.to_existing_atom("Elixir.Payload.SimpleSteps"), String.to_atom("sim
 
 ### How a worker execute a workflow
 
-* A worker during initialization will report ready to its leader as its last step. This is done using `GenServer.cast`.
-* A leader handle cast for `%{msg: :ready, from: some_worker}` and send back a workflow to the worker.
-* Now, the question is how the worker process the workflow (process real work).
+- A worker during initialization will report ready to its leader as its last step. This is done using `GenServer.cast`.
+- A leader handle cast for `%{msg: :ready, from: some_worker}` and send back a workflow to the worker.
+- Now, the question is how the worker process the workflow (process real work).
 
 We could use `handle_info` to [perform periodic work](https://hexdocs.pm/elixir/GenServer.html#module-receiving-regular-messages).
 
@@ -473,9 +473,9 @@ Worker.Leader.execute_workflows(symbol, workflows)
 
 TODO:
 
-* Add interface function to check the status of scenario
-* How many workflows, their status
-* Each worker's status
+- Add interface function to check the status of scenario
+- How many workflows, their status
+- Each worker's status
 
 ```elixir
 Worker.Leader.workflow_status(symbol)

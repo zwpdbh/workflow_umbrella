@@ -1,10 +1,10 @@
-defmodule Worker.Monitor do
+defmodule Worker.Collector do
   use GenServer
 
   require Logger
 
   @moduledoc """
-  This module is used to monitor the state changes of Worker.Leader.
+  This module is used to collector the state changes of Worker.Leader.
   We trigger extra event to leader.
   """
 
@@ -19,7 +19,7 @@ defmodule Worker.Monitor do
 
   @impl true
   def init(symbol) do
-    Logger.info("Initializing Worker.Monitor for symbol: #{symbol}")
+    Logger.info("Initializing Worker.Collector for symbol: #{symbol}")
     {:ok, %State{symbol: symbol}}
   end
 
@@ -80,19 +80,19 @@ defmodule Worker.Monitor do
     GenServer.cast(:"#{__MODULE__}_#{symbol}", {:update_from_worker, update_info})
   end
 
-  def get_monitor_pid_for_symbol(symbol) do
+  def get_collector_pid_for_symbol(symbol) do
     :"#{__MODULE__}_#{symbol}"
   end
 
   def state_for_symbol(symbol) do
     symbol
-    |> get_monitor_pid_for_symbol
+    |> get_collector_pid_for_symbol
     |> GenServer.call({:current_state})
   end
 
   def set_leader_state(%{symbol: symbol} = leader_state_info) do
     symbol
-    |> get_monitor_pid_for_symbol
+    |> get_collector_pid_for_symbol
     |> GenServer.cast({:set_leader_state, leader_state_info})
   end
 end

@@ -36,7 +36,7 @@ defmodule Worker.Leader do
           workflows_in_progress: workflows_in_progress
         } = state
       ) do
-    leader_backup = Map.get(Worker.Monitor.state_for_symbol(symbol), :leader_backup)
+    leader_backup = Map.get(Worker.Collector.state_for_symbol(symbol), :leader_backup)
 
     case leader_backup do
       nil ->
@@ -69,7 +69,7 @@ defmodule Worker.Leader do
          }}
 
       backup_state ->
-        Worker.Monitor.set_leader_state(%{
+        Worker.Collector.set_leader_state(%{
           symbol: symbol,
           leader_state: nil,
           reason: "leader reload its backup succeed, so reset its backup to empty"
@@ -174,7 +174,7 @@ defmodule Worker.Leader do
         # update the worker name -- worker pid register
         updated_worker_registry = Map.put(worker_registry, worker_name, new_worker_pid)
 
-        Worker.Monitor.update_from_worker(%{
+        Worker.Collector.update_from_worker(%{
           symbol: symbol,
           worker_name: worker_name,
           which_module: which_module,
@@ -220,7 +220,7 @@ defmodule Worker.Leader do
       {:noreply, state}
     else
       # Notify the moitor about the some step from some worker is executed succeed
-      Worker.Monitor.update_from_worker(%{
+      Worker.Collector.update_from_worker(%{
         symbol: symbol,
         worker_name: worker_name,
         step_status: "succeed"
@@ -500,7 +500,7 @@ defmodule Worker.Leader do
   # Callback for handling temrination of Leader
   @impl true
   def terminate(_reason, %{symbol: symbol} = state) do
-    Worker.Monitor.set_leader_state(%{
+    Worker.Collector.set_leader_state(%{
       symbol: symbol,
       leader_state: state,
       reason: "leader crashed"
