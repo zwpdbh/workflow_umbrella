@@ -1,0 +1,758 @@
+# ACStor Playground
+
+## Introduction
+
+This livebook is used to play as REPL for developing ACStor Scenario.
+So, start workflow_umbrella project and connect to it as attached node.
+
+```elixir
+# Test to see if we could get auth token from workflow_umbrella project.
+alias Azure.Auth
+Auth.get_auth_token(Auth.azure_scope())
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Test log to a local file
+
+```elixir
+alias Steps.Exec
+```
+
+```elixir
+Steps.Common.Time.get_time_millisecond()
+```
+
+```elixir
+log_file = Steps.LogBackend.create_tmp_log_file("playground.txt")
+```
+
+```elixir
+Exec.run(%{cmd: "ls -la", log_file: log_file})
+```
+
+```elixir
+Exec.run(%{cmd: "ls filenotexist", log_file: log_file})
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Test replication steps and log to a file
+
+```elixir
+alias Steps.Acstor.Replication, as: Rep
+```
+
+```elixir
+log_file = Steps.LogBackend.create_tmp_log_file("replication.txt")
+```
+
+```elixir
+settings = %{
+  sub: "65490f91-f2c2-4514-80ba-4ec1de89aeda",
+  region: "eastus",
+  rg: "acstor-replication-test",
+  session_dir: "/tmp/logs/2023-8-26/az_cli_sessions/lot2mn"
+}
+```
+
+```elixir
+settings |> Rep.az_set_subscription()
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## How to use Worker to execute ACStor replication
+
+* For one scenario such as managed disk, `Worker.Leader` load different settings from a scenario setting service. Such as number of disks, run time. 
+  The purpose of this is to generate different settings for each workflow later to use.
+
+* `Worker.Leader` specify how many `Worker` are created. There could be `M` workers for `N` workflows.
+
+* For replication, when `Worker.Leader` assign workflow to `worker`, it need to reset worker's some interal state (such as: AKS cluster name)
+
+* A `Worker` use inital settings got from `Worker.Leader` to run workflow by execute each steps in the workflow.
+
+* After each step is execute by a `Worker`, the state of the `Worker` need to be updated by that step.
+
+Each step is a pure function from Steps.Acstor.Replication module.
+
+* We update a `Worker`'s state by wrapping the pure function in another function.
+
+**Update**
+
+* `Worker` no longer execute workflows, it doesn't know about workflows.
+* `Worker` only care about executing a step.
+* The concept of workflow which is the sequence of steps is kept only in `Worker.Leader`.
+
+## Scenario Settings
+
+```elixir
+symbol = "azure_disk_replication"
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Test 1.1: start scenario
+
+```elixir
+# Stop a scenario
+Workflow.stop_scenario(symbol)
+```
+
+```elixir
+Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
+```
+
+```elixir
+# Start a scenario
+Workflow.start_scenario(symbol)
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## (optional) run one step for dev
+
+```elixir
+# If there is one worker, then we could test one step 
+# by simply schedule a workload containing one step
+# Create a workflow which only has one symbol 
+%{
+  symbol: symbol,
+  workflow_definition: [{"Steps.Acstor.Replication", "check_the_replication"}]
+}
+|> Worker.Leader.add_workflow_for_symbol()
+
+# schedule the workflow to a worker (now, there is only one worker)
+Worker.Leader.schedule_workflows(symbol)
+
+# Trigger the workflows assigned to workers
+Worker.Leader.execute_workflows_for_symbol(symbol)
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## (optinal) check the worker state
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+state = Worker.worker_state(worker_pid)
+state.step_context
+```
+
+```elixir
+state.step_context.xfs_disk_pools_used_by_pod
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## (optinal) check leader state
+
+```elixir
+Worker.Leader.leader_state(symbol)
+```
+
+```elixir
+Worker.Leader.toggle_symbol_execution(symbol)
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## (optional) add extra context to worker
+
+```elixir
+# Add extra context or overwrite 
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+update_context = %{
+  acstor_api_host_port: 9092,
+  acstor_api_value: "acstor-api-rest-7f6f545689-z9rzg",
+  aks: "acstorbyzhaowei-d29a6s",
+  aks_node_label_registry: [
+    %{label: "node0", node_name: "aks-storagepool-11078561-vmss000000", selector: "targetNode"},
+    %{label: "node1", node_name: "aks-storagepool-11078561-vmss000001", selector: "targetNode"},
+    %{label: "node2", node_name: "aks-storagepool-11078561-vmss000002", selector: "targetNode"}
+  ],
+  aks_node_tag_registry: [
+    %{node_name: "aks-storagepool-11078561-vmss000000", tag: "targetNode=node0"},
+    %{node_name: "aks-storagepool-11078561-vmss000001", tag: "targetNode=node1"},
+    %{node_name: "aks-storagepool-11078561-vmss000002", tag: "targetNode=node2"}
+  ],
+  aks_nodes: [
+    "aks-storagepool-11078561-vmss000000",
+    "aks-storagepool-11078561-vmss000001",
+    "aks-storagepool-11078561-vmss000002"
+  ],
+  disk_type: "azure_disk",
+  kubectl_config: "/tmp/logs/2023-8-30_12-38-36/d29a6s/kubectl_config",
+  log_file: "/tmp/logs/2023-8-30_12-38-36/d29a6s/log.txt",
+  managed_id: "71506f62-6b87-461a-8d88-fac326ead311",
+  node_rg: "MC_acstorbyzhaowei-d29a6s_acstorbyzhaowei-d29a6s_eastus",
+  pod_node_registry: [
+    %{node_name: "aks-storagepool-11078561-vmss000001", pod_name: "pod-0zbdo1"},
+    %{node_name: "aks-storagepool-11078561-vmss000002", pod_name: "pod-z0ci58"}
+  ],
+  pod_pvc_registry: [
+    %{pod_name: "pod-0zbdo1", pvc_name: "pvc-ow5i0b"},
+    %{pod_name: "pod-z0ci58", pvc_name: "pvc-eo816g"}
+  ],
+  prefix: "acstorbyzhaowei",
+  pvc_settings: [
+    %{pvc_name: "pvc-ow5i0b", pvc_size: "100Gi"},
+    %{pvc_name: "pvc-eo816g", pvc_size: "800Gi"}
+  ],
+  region: "eastus",
+  replication_info: %{
+    "entries" => [
+      %{
+        "spec" => %{
+          "num_replicas" => 3,
+          "policy" => %{"self_heal" => true},
+          "size" => 858_993_459_200,
+          "status" => "Created",
+          "target" => %{"node" => "aks-storagepool-11078561-vmss000002", "protocol" => "nvmf"},
+          "thin" => true,
+          "topology" => %{
+            "pool_topology" => %{
+              "labelled" => %{
+                "exclusion" => %{},
+                "inclusion" => %{"openebs.io/created-by" => "operator-diskpool"}
+              }
+            }
+          },
+          "uuid" => "1462611c-d033-4d68-8fbe-745f00954902"
+        },
+        "state" => %{
+          "replica_topology" => %{
+            "3efa5d89-cc03-4724-8c8e-c5dc87b50934" => %{
+              "node" => "aks-storagepool-11078561-vmss000001",
+              "pool" => "csi-4vz72",
+              "state" => "Online"
+            },
+            "8af9a6e9-0148-499f-9719-179dd5e0c1c2" => %{
+              "node" => "aks-storagepool-11078561-vmss000000",
+              "pool" => "csi-9twlz",
+              "state" => "Online"
+            },
+            "f0a2889f-eb13-4154-9d4e-a7a02ef125aa" => %{
+              "node" => "aks-storagepool-11078561-vmss000002",
+              "pool" => "csi-xlwcz",
+              "state" => "Online"
+            }
+          },
+          "size" => 858_993_459_200,
+          "status" => "Online",
+          "target" => %{
+            "children" => [
+              %{
+                "state" => "Online",
+                "uri" =>
+                  "bdev:////xfs-disk-pool/csi-xlwcz/f0a2889f-eb13-4154-9d4e-a7a02ef125aa?uuid=f0a2889f-eb13-4154-9d4e-a7a02ef125aa"
+              },
+              %{
+                "state" => "Online",
+                "uri" =>
+                  "nvmf://10.224.0.8:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-9twlz/8af9a6e9-0148-499f-9719-179dd5e0c1c2?uuid=8af9a6e9-0148-499f-9719-179dd5e0c1c2"
+              },
+              %{
+                "state" => "Online",
+                "uri" =>
+                  "nvmf://10.224.0.9:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-4vz72/3efa5d89-cc03-4724-8c8e-c5dc87b50934?uuid=3efa5d89-cc03-4724-8c8e-c5dc87b50934"
+              }
+            ],
+            "deviceUri" =>
+              "nvmf://10.224.0.7:8420/nqn.2019-05.io.openebs:1462611c-d033-4d68-8fbe-745f00954902",
+            "node" => "aks-storagepool-11078561-vmss000002",
+            "protocol" => "nvmf",
+            "rebuilds" => 0,
+            "size" => 858_993_459_200,
+            "state" => "Online",
+            "uuid" => "1bec6e85-7535-4922-9996-7c5250378599"
+          },
+          "uuid" => "1462611c-d033-4d68-8fbe-745f00954902"
+        }
+      }
+    ],
+    "next_token" => 1
+  },
+  rg: "acstorbyzhaowei-d29a6s",
+  session_dir: "/tmp/logs/2023-8-30_12-38-36/d29a6s",
+  storage_class: "acstor-replication",
+  storage_pools: ["storagepool1", "storagepool2", "storagepool3"],
+  sub: "d20d4862-d44e-429d-bcd7-fe71a331a8b8",
+  suffix: "d29a6s",
+  vm_sku: "Standard_D4s_v3",
+  xfs_disk_pools_used_by_pod: ["csi-4vz72", "csi-xlwcz"],
+  symbol: symbol
+}
+
+if Process.alive?(worker_pid) do
+  # check worker context
+  Worker.add_worker_context(worker_pid, update_context)
+end
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## (optional) cancel workflow from worker
+
+```elixir
+Worker.Leader.cancel_workflow(%{symbol: symbol, worker_name: "worker1"})
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Test 1.2 Run workflow steps one by one
+
+#### Add one workflow definition for a symbol
+
+```elixir
+azure_disk_workflow_definition =
+  [
+    "az_login_using_sp",
+    "az_set_subscription",
+    "az_create_resource_group",
+    "az_create_aks_cluster",
+    "az_add_node_pool"
+    "set_disk_type_to_azure_disk",
+    "az_add_node_pool",
+    "get_aks_config",
+    "kubectl_get_nodes",
+    "kubectl_label_nodes",
+    "kubectl_show_nodes_label",
+    "az_check_managed_id",
+    "az_check_node_resource_group",
+    "az_assign_contributor_role",
+    "install_acstor_addons",
+    "config_acstor_replication",
+    "create_storage_pool",
+    "create_storage_class"
+    "create_pvc",
+    "get_current_nodes",
+    "label_nodes_with_labels",
+    "check_labeled_noded",
+    "create_pod_on_some_node",
+    "kubectl_get_pods",
+    "run_fio"
+    "get_acstor_api_value",
+    "small_sleep"
+    "forward_acstor_api_pod_to_host",
+    "get_replication_info", 
+    "get_xfs_disk_pools_used_by_pod",
+    "check_the_replication",
+    "list_the_io_engine_pods",
+    "run_mdf_xfs_disk_pools_used_by_pod",
+    "unlabel_not_used_node", 
+    "verify_unlabel_result"
+    "big_sleep",
+    "label_node_back_with_acstor",
+    "big_sleep",
+    "verify_rebuilding_state"
+  ]
+  |> Enum.map(fn each -> {"Steps.Acstor.Replication", each} end)
+```
+
+```elixir
+%{
+  symbol: symbol,
+  workflow_definition: workflow_definition
+}
+|> Worker.Leader.add_workflow_for_symbol()
+```
+
+#### Schedule workflows in Leader based on its current state
+
+```elixir
+Worker.Leader.schedule_workflows(symbol)
+```
+
+#### Trigger Leader to let each worker to run ONE step from its assigned workflow
+
+```elixir
+Worker.Leader.execute_workflows_for_symbol(symbol)
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Test 4: execute one step with error
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+Worker.run_step(%{
+  worker_pid: worker_pid,
+  module_name: "Steps.Acstor.Replication",
+  step_name: "dummy_step_will_fail"
+})
+```
+
+The `reason` is a tuple with two parts:
+
+* The first part: `:badmatch` indicate the error type and `{:err, "ls: cannot access 'non_exist_file': No such file or directory\n"}` shows reason for the error type.
+* The second part shows the stacktrace.
+
+<!-- livebook:{"break_markdown":true} -->
+
+For example, if the step we execute list some file doesn't exist. We could catch the error in callback
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+@impl true
+def terminate(reason, %{step_context: context} = _state) do
+  reason |> IO.inspect(label: "#{__MODULE__} 64")
+  context |> IO.inspect(label: "#{__MODULE__} 65")
+
+  :normal
+end
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+The `reason` is
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+{
+  {:badmatch, {:err, "ls: cannot access 'non_exist_file': No such file or directory\n"}},
+  [
+    {Steps.Acstor.Replication, :step_failed, 1,
+      [file: 'lib/steps/acstor/replication.ex', line: 77]},
+    {Worker, :handle_cast, 2, [file: 'lib/worker/worker.ex', line: 46]},
+    {:gen_server, :try_dispatch, 4, [file: 'gen_server.erl', line: 1123]},
+    {:gen_server, :handle_msg, 6, [file: 'gen_server.erl', line: 1200]},
+    {:proc_lib, :init_p_do_apply, 3, [file: 'proc_lib.erl', line: 240]}
+  ]
+}
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+The output on terminal shows the worker process has terminated.
+
+```sh
+[error] GenServer #PID<0.9844.0> terminating
+** (MatchError) no match of right hand side value: {:err, "ls: cannot access 'non_exist_file': No such file or directory\n"}
+    (workflow 0.1.0) lib/steps/acstor/replication.ex:77: Steps.Acstor.Replication.step_failed/1
+    (workflow 0.1.0) lib/worker/worker.ex:46: Worker.handle_cast/2
+    (stdlib 4.3) gen_server.erl:1123: :gen_server.try_dispatch/4
+    (stdlib 4.3) gen_server.erl:1200: :gen_server.handle_msg/6
+    (stdlib 4.3) proc_lib.erl:240: :proc_lib.init_p_do_apply/3
+Last message: {:"$gen_cast", {:run_step, "Steps.Acstor.Replication", "step_failed"}}
+State: %Worker.State{symbol: "azure_disk_replication", status: :ready, report_to: #PID<0.9843.0>, history: [{"Steps.Acstor.Replication", "az_set_subscription"}, {"Steps.Acstor.Replication", "az_login_using_sp"}], step_context: %{region: "eastus", rg: "acstor-replication-test", session_dir: "/tmp/logs/2023-8-27/az_cli_sessions/2bc5oj", sub: "65490f91-f2c2-4514-80ba-4ec1de89aeda"}}
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+So, we need to save our state to leader in the callback.
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Tmp
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+state = Worker.worker_state(worker_pid)
+
+state.step_context
+|> Steps.Acstor.Replication.verify_rebuilding_state()
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Tmp02
+
+```elixir
+%{replication_info: info} = %{
+  replication_info: %{
+    "entries" => [
+      %{
+        "spec" => %{
+          "num_replicas" => 3,
+          "policy" => %{"self_heal" => true},
+          "size" => 858_993_459_200,
+          "status" => "Created",
+          "target" => %{"node" => "aks-storagepool-11078561-vmss000002", "protocol" => "nvmf"},
+          "thin" => true,
+          "topology" => %{
+            "pool_topology" => %{
+              "labelled" => %{
+                "exclusion" => %{},
+                "inclusion" => %{"openebs.io/created-by" => "operator-diskpool"}
+              }
+            }
+          },
+          "uuid" => "1462611c-d033-4d68-8fbe-745f00954902"
+        },
+        "state" => %{
+          "replica_topology" => %{
+            "3efa5d89-cc03-4724-8c8e-c5dc87b50934" => %{
+              "node" => "aks-storagepool-11078561-vmss000001",
+              "pool" => "csi-4vz72",
+              "state" => "Online"
+            },
+            "7c0011c8-1451-4621-9473-6d4c2075e262" => %{
+              "node" => "aks-storagepool-11078561-vmss000000",
+              "pool" => "csi-9twlz",
+              "state" => "Online"
+            },
+            "f0a2889f-eb13-4154-9d4e-a7a02ef125aa" => %{
+              "node" => "aks-storagepool-11078561-vmss000002",
+              "pool" => "csi-xlwcz",
+              "state" => "Online"
+            }
+          },
+          "size" => 858_993_459_200,
+          "status" => "Degraded",
+          "target" => %{
+            "children" => [
+              %{
+                "state" => "Online",
+                "uri" =>
+                  "bdev:////xfs-disk-pool/csi-xlwcz/f0a2889f-eb13-4154-9d4e-a7a02ef125aa?uuid=f0a2889f-eb13-4154-9d4e-a7a02ef125aa"
+              },
+              %{
+                "state" => "Online",
+                "uri" =>
+                  "nvmf://10.224.0.9:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-4vz72/3efa5d89-cc03-4724-8c8e-c5dc87b50934?uuid=3efa5d89-cc03-4724-8c8e-c5dc87b50934"
+              },
+              %{
+                "rebuildProgress" => 6,
+                "state" => "Degraded",
+                "uri" =>
+                  "nvmf://10.224.0.8:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-9twlz/7c0011c8-1451-4621-9473-6d4c2075e262?uuid=7c0011c8-1451-4621-9473-6d4c2075e262"
+              }
+            ],
+            "deviceUri" =>
+              "nvmf://10.224.0.7:8420/nqn.2019-05.io.openebs:1462611c-d033-4d68-8fbe-745f00954902",
+            "node" => "aks-storagepool-11078561-vmss000002",
+            "protocol" => "nvmf",
+            "rebuilds" => 1,
+            "size" => 858_993_459_200,
+            "state" => "Degraded",
+            "uuid" => "1bec6e85-7535-4922-9996-7c5250378599"
+          },
+          "uuid" => "1462611c-d033-4d68-8fbe-745f00954902"
+        }
+      }
+    ],
+    "next_token" => 1
+  }
+}
+```
+
+```elixir
+info
+```
+
+```elixir
+%{
+  "entries" => [
+    %{
+      "spec" => %{
+        "num_replicas" => 3,
+        "policy" => %{"self_heal" => true},
+        "size" => 858_993_459_200,
+        "status" => "Created",
+        "target" => %{"node" => "aks-storagepool-11078561-vmss000002", "protocol" => "nvmf"},
+        "thin" => true,
+        "topology" => %{
+          "pool_topology" => %{
+            "labelled" => %{
+              "exclusion" => %{},
+              "inclusion" => %{"openebs.io/created-by" => "operator-diskpool"}
+            }
+          }
+        },
+        "uuid" => "1462611c-d033-4d68-8fbe-745f00954902"
+      },
+      "state" => %{
+        "replica_topology" => %{
+          "3efa5d89-cc03-4724-8c8e-c5dc87b50934" => %{
+            "node" => "aks-storagepool-11078561-vmss000001",
+            "pool" => "csi-4vz72",
+            "state" => "Online"
+          },
+          "7c0011c8-1451-4621-9473-6d4c2075e262" => %{
+            "node" => "aks-storagepool-11078561-vmss000000",
+            "pool" => "csi-9twlz",
+            "state" => "xxx"
+          },
+          "f0a2889f-eb13-4154-9d4e-a7a02ef125aa" => %{
+            "node" => "aks-storagepool-11078561-vmss000002",
+            "pool" => "csi-xlwcz",
+            "state" => "xx"
+          }
+        },
+        "size" => 858_993_459_200,
+        "status" => "Degraded",
+        "target" => %{
+          "children" => [
+            %{
+              "state" => "Online",
+              "uri" =>
+                "bdev:////xfs-disk-pool/csi-xlwcz/f0a2889f-eb13-4154-9d4e-a7a02ef125aa?uuid=f0a2889f-eb13-4154-9d4e-a7a02ef125aa"
+            },
+            %{
+              "state" => "Online",
+              "uri" =>
+                "nvmf://10.224.0.9:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-4vz72/3efa5d89-cc03-4724-8c8e-c5dc87b50934?uuid=3efa5d89-cc03-4724-8c8e-c5dc87b50934"
+            },
+            %{
+              "rebuildProgress" => 6,
+              "state" => "Degraded",
+              "uri" =>
+                "nvmf://10.224.0.8:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-9twlz/7c0011c8-1451-4621-9473-6d4c2075e262?uuid=7c0011c8-1451-4621-9473-6d4c2075e262"
+            }
+          ],
+          "deviceUri" =>
+            "nvmf://10.224.0.7:8420/nqn.2019-05.io.openebs:1462611c-d033-4d68-8fbe-745f00954902",
+          "node" => "aks-storagepool-11078561-vmss000002",
+          "protocol" => "nvmf",
+          "rebuilds" => 1,
+          "size" => 858_993_459_200,
+          "state" => "Degraded",
+          "uuid" => "1bec6e85-7535-4922-9996-7c5250378599"
+        },
+        "uuid" => "1462611c-d033-4d68-8fbe-745f00954902"
+      }
+    }
+  ],
+  "next_token" => 1
+}
+|> Map.get("entries")
+|> List.first()
+|> Map.get("state")
+|> Map.get("replica_topology")
+|> Enum.reject(fn {_id, %{"state" => state}} -> state == "Online" end)
+```
+
+```elixir
+info
+|> Map.get("entries")
+|> List.first()
+|> Map.get("state")
+|> Map.get("target")
+|> Map.get("children")
+|> Enum.map(fn %{"uri" => url} ->
+  Regex.named_captures(~r/xfs-disk-pool\/(?<info>csi-[a-z0-9A-Z]*)/, url)
+end)
+```
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+state = Worker.worker_state(worker_pid)
+
+state.step_context
+|> Steps.Acstor.Replication.test_kubectl()
+```
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+
+state = Worker.worker_state(worker_pid)
+
+state.step_context
+|> Map.merge(%{
+  pod_node_registry: [
+    %{node_name: "aks-storagepool-11078561-vmss000000", pod_name: "pod_01"},
+    %{node_name: "aks-storagepool-11078561-vmss000001", pod_name: "pod_02"}
+  ]
+})
+|> Steps.Acstor.Replication.get_available_node()
+```
+
+```elixir
+aks_node_label_registry: [
+    %{label: "node0", node_name: "aks-storagepool-11078561-vmss000000", selector: "targetNode"},
+    %{label: "node1", node_name: "aks-storagepool-11078561-vmss000001", selector: "targetNode"},
+    %{label: "node2", node_name: "aks-storagepool-11078561-vmss000002", selector: "targetNode"}
+  ]
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## tmp kubectl
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+state = Worker.worker_state(worker_pid)
+
+state.step_context
+|> Map.merge(%{})
+|> Steps.Acstor.Replication.test_kubectl()
+```
+
+## Simulate multiple workflow running
+
+```elixir
+# Settings 
+symbol = "nvme"
+```
+
+```elixir
+%{a: 1, b: 2} |> map_size
+```
+
+<!-- livebook:{"branch_parent_index":16} -->
+
+## Control Scneario execution
+
+```elixir
+Workflow.stop_scenario(symbol)
+```
+
+```elixir
+Workflow.start_scenario(symbol)
+```
+
+```elixir
+Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
+```
+
+<!-- livebook:{"branch_parent_index":16} -->
+
+## Control Leader
+
+```elixir
+alias Worker.Leader
+alias Steps.Acstor.WorkflowConfig
+```
+
+```elixir
+Leader.toggle_symbol_execution(symbol)
+```
+
+```elixir
+workflow_definitions =
+  1..7
+  |> Enum.to_list()
+  |> Enum.map(fn _ ->
+    WorkflowConfig.dummy_workflow()
+  end)
+
+Leader.add_workflows_for_symbol(%{
+  symbol: symbol,
+  workflows_definition: workflow_definitions
+})
+
+Leader.schedule_workflows(symbol)
+```
+
+```elixir
+Leader.add_new_fresh_worker(symbol)
+Leader.schedule_workflows(symbol)
+```
+
+```elixir
+Leader.current_state(symbol)
+|> Map.get(:workflows_in_progress)
+```
+
+```elixir
+Leader.execute_workflows_for_symbol(symbol)
+```

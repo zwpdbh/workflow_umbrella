@@ -108,7 +108,7 @@ ghcr.io/livebook-dev/livebook:0.8.1
   [Livebook] Application running at http://0.0.0.0:8080/?token=gwc234cmrxsfnqkaeeu6hv7wjhg3qe2g
   ```
 
-For more details, check section one in `README.md`  located in the roote of the project.
+For more details, check section one in `README.md` located in the roote of the project.
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -142,7 +142,7 @@ In Phoenix, contexts often encapsulate data access and data validation. They oft
 * A `Worker`
   * A worker is a `GenServer` process.
 * A `Step` is a pure function executed by a worker.
-* A `Workflow` is consisted of a series of steps. 
+* A `Workflow` is consisted of a series of steps.
   * It is the event a worker need to process.
   * Each step dependents on the execution of previous one.
 * A `Scenario` is a group of `Workflows`.
@@ -213,7 +213,7 @@ In application `Workflow`
       def start(_type, _args) do
         children = [
           # other childrens
-          # ... 
+          # ...
           {DynamicSupervisor, name: DynamicSymbolSupervisor}
         ]
 
@@ -283,7 +283,7 @@ Problem 01: Could not start workers when `SymbolSupervisor.start_link("scenario_
 
 ```text
 [error] GenServer :"Elixir.Worker.Leader-scenario_01" terminating
-** (stop) exited in: GenServer.call(:"DynamicWorkerSupervisor-", {:start_child, {{Worker, :start_link, [%Worker.State{symbol: nil, status: :ready, current_step: nil, workload_history: [], context: %{}}]}, :temporary, 5000, :worker, [Worker]}}, :infinity)
+** (stop) exited in: GenServer.call(:"DynamicWorkerSupervisor-", {:start_child, {{Worker, :start_link, [%Worker.State{symbol: nil, status: :ready, current_step: nil, history: [], context: %{}}]}, :temporary, 5000, :worker, [Worker]}}, :infinity)
     ** (EXIT) no process: the process is not alive or there's no process currently associated with the given name, possibly because its application isn't started
     (elixir 1.14.3) lib/gen_server.ex:1027: GenServer.call/3
     (workflow 0.1.0) lib/worker/leader.ex:25: anonymous fn/3 in Worker.Leader.handle_continue/2
@@ -391,14 +391,14 @@ Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 ### Objective
 
 * Execute 5 workloads for one scenario using 1 workers.
-* Monitor the progress of a scenario 
+* Monitor the progress of a scenario
   * Total workloads for it.
   * How many is running
   * How many is executed
   * What are the result of execution of a workload
 * Monitor the workers of a scenario
   * How many workers in total
-  * Each worker's status 
+  * Each worker's status
     * Ready
     * Busy
     * Unavailable
@@ -416,7 +416,7 @@ alias Payload.{SimpleWorkflow, SimpleSteps}
 ```
 
 ```elixir
-# Check a module's info 
+# Check a module's info
 SimpleSteps.module_info()
 ```
 
@@ -431,7 +431,9 @@ apply(String.to_existing_atom("Elixir.Payload.SimpleSteps"), :simple_add, [100])
 ```
 
 ```elixir
-apply(String.to_existing_atom("Elixir.Payload.SimpleSteps"), String.to_atom("simple_add"), [100])
+apply(String.to_existing_atom("Elixir.Payload.SimpleSteps"), String.to_atom("simple_add"), [
+  %{n: 100}
+])
 ```
 
 ### How a worker execute a workflow
