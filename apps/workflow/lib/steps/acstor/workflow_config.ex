@@ -15,7 +15,7 @@ defmodule Steps.Acstor.WorkflowConfig do
   end
 
   def dummy_workflow() do
-    1..10
+    1..5
     |> Enum.to_list()
     |> Enum.map(fn _ ->
       {"Steps.Acstor.WorkflowConfig", "step_may_fail"}
