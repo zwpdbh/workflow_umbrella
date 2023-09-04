@@ -7,15 +7,15 @@ defmodule Steps.Acstor.WorkflowConfig do
     n = Enum.random(0..7)
     Process.sleep(n * 1_000)
 
-    if n > 5 do
-      raise "time out"
-    end
+    # if n > 5 do
+    #   raise "time out"
+    # end
 
     %{}
   end
 
   def dummy_workflow() do
-    1..10
+    1..5
     |> Enum.to_list()
     |> Enum.map(fn _ ->
       {"Steps.Acstor.WorkflowConfig", "step_may_fail"}

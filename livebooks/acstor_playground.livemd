@@ -694,10 +694,6 @@ state.step_context
 symbol = "nvme"
 ```
 
-```elixir
-%{a: 1, b: 2} |> map_size
-```
-
 <!-- livebook:{"branch_parent_index":16} -->
 
 ## Control Scneario execution
@@ -729,7 +725,7 @@ Leader.toggle_symbol_execution(symbol)
 
 ```elixir
 workflow_definitions =
-  1..7
+  1..2
   |> Enum.to_list()
   |> Enum.map(fn _ ->
     WorkflowConfig.dummy_workflow()
@@ -740,19 +736,21 @@ Leader.add_workflows_for_symbol(%{
   workflows_definition: workflow_definitions
 })
 
-Leader.schedule_workflows(symbol)
-```
-
-```elixir
-Leader.add_new_fresh_worker(symbol)
-Leader.schedule_workflows(symbol)
+# Leader.schedule_workflows(symbol)
 ```
 
 ```elixir
 Leader.current_state(symbol)
-|> Map.get(:workflows_in_progress)
+```
+
+```elixir
+Leader.schedule_workflows(symbol)
 ```
 
 ```elixir
 Leader.execute_workflows_for_symbol(symbol)
+```
+
+```elixir
+Map.get(nil, :a, nil)
 ```
