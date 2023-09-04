@@ -28,7 +28,6 @@ defmodule Steps.Acstor.WorkflowConfig do
       "az_set_subscription",
       "az_create_resource_group",
       "az_create_aks_cluster",
-      "az_add_node_pool",
       "set_disk_type_to_azure_disk",
       "az_add_node_pool",
       "get_aks_config",

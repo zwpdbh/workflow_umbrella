@@ -1093,10 +1093,21 @@ defmodule Steps.Acstor.Replication do
     %{}
   end
 
-  def test_kubectl(%{kubectl_config: kubectl_config} = context) do
+  def test_kubectl_cmd(%{kubectl_config: kubectl_config} = context, cmd) do
     %{
-      cmd: "kubectl get storagepool -A",
+      cmd: cmd,
       env: [{"KUBECONFIG", kubectl_config}]
+    }
+    |> Map.merge(context)
+    |> Exec.run()
+
+    %{}
+  end
+
+  def test_az_cmd(%{session_dir: session_dir} = context, cmd) do
+    %{
+      cmd: cmd,
+      env: [{"AZURE_CONFIG_DIR", session_dir}]
     }
     |> Map.merge(context)
     |> Exec.run()

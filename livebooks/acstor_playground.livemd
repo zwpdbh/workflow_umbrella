@@ -87,7 +87,22 @@ state = Worker.worker_state(worker_pid)
 
 state.step_context
 |> Map.merge(%{})
-|> Steps.Acstor.Replication.test_kubectl()
+|> Steps.Acstor.Replication.test_kubectl_cmd("kubectl get pods")
+```
+
+<!-- livebook:{"branch_parent_index":1} -->
+
+## Execute arbitary az command
+
+```elixir
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+state = Worker.worker_state(worker_pid)
+
+state.step_context
+|> Map.merge(%{})
+|> Steps.Acstor.Replication.test_az_cmd(
+  "az group delete --name acstorbyzhaowei-nd19t2 --yes --no-wait"
+)
 ```
 
 ## Simulate multiple workflow running
@@ -97,7 +112,7 @@ state.step_context
 symbol = "nvme"
 ```
 
-<!-- livebook:{"branch_parent_index":4} -->
+<!-- livebook:{"branch_parent_index":5} -->
 
 ## Control Scneario execution
 
@@ -113,7 +128,7 @@ Workflow.start_scenario(symbol)
 Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 ```
 
-<!-- livebook:{"branch_parent_index":4} -->
+<!-- livebook:{"branch_parent_index":5} -->
 
 ## Control Leader
 
