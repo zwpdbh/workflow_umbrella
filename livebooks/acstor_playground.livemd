@@ -736,11 +736,14 @@ Leader.add_workflows_for_symbol(%{
   workflows_definition: workflow_definitions
 })
 
+Leader.add_new_worker(symbol)
 # Leader.schedule_workflows(symbol)
 ```
 
 ```elixir
 Leader.current_state(symbol)
+|> Map.get(:workflows_finished)
+|> Enum.map(fn x -> x.workflow_status end)
 ```
 
 ```elixir
@@ -752,5 +755,7 @@ Leader.execute_workflows_for_symbol(symbol)
 ```
 
 ```elixir
-Map.get(nil, :a, nil)
+Leader.current_state(symbol)
+|> Map.get(:workflows_finished)
+|> Enum.map(fn x -> x.workflow_status end)
 ```

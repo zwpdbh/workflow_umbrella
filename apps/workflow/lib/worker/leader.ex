@@ -17,6 +17,24 @@ defmodule Worker.Leader do
               symbol_execution_enabled: true
   end
 
+  defmodule WorkflowInstance do
+    use Accessible
+
+    defstruct workflow_id: "",
+              steps: [],
+              workflow_status: ""
+  end
+
+  defmodule WorkflowStepState do
+    use Accessible
+
+    defstruct step_id: "",
+              step_index: 0,
+              step_status: "todo",
+              which_function: "",
+              which_module: ""
+  end
+
   def start_link(symbol) do
     GenServer.start_link(__MODULE__, symbol, name: :"#{__MODULE__}_#{symbol}")
   end
@@ -167,6 +185,7 @@ defmodule Worker.Leader do
     case next_step do
       nil ->
         state
+
       next_step ->
         case next_step.step_status do
           x when x in ["todo", "failed"] ->
@@ -217,7 +236,7 @@ defmodule Worker.Leader do
 
   @impl true
   def handle_call(
-        {:add_new_fresh_worker},
+        {:add_new_worker},
         _from,
         %{
           workflows_in_progress: workflows_in_progress,
@@ -253,43 +272,122 @@ defmodule Worker.Leader do
     {:reply, workflows, %{state | workflows_todo: workflows ++ workflows_todo}}
   end
 
-
   @impl true
   def handle_call(
-        {:schedule_workflow_for_worker, worker_name},
+        {:schedule_workflow_for_worker, worker_name, :prepare_next_todo_step},
         _from,
-        %{workflows_in_progress: workflows_in_progress, workflows_todo: workflows_todo, workflows_finished: workflows_finished}= state
+        %{
+          workflows_in_progress: workflows_in_progress,
+          workflows_todo: workflows_todo,
+          workflows_finished: workflows_finished
+        } = state
       ) do
-
     case {Map.get(workflows_in_progress, worker_name), workflows_todo} do
       {nil, []} ->
         {:reply, nil, state}
+
       {nil, [head | rest]} ->
         updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, head)
-        {:reply, head, %{state | workflows_in_progress: updated_workflows_in_progress, workflows_todo: rest}}
-       {%{steps: steps} = current_workflow, []} ->
+
+        {:reply, head,
+         %{state | workflows_in_progress: updated_workflows_in_progress, workflows_todo: rest}}
+
+      {%{steps: steps} = current_workflow, []} ->
         if find_next_step(steps) != nil do
           {:reply, current_workflow, state}
         else
           # If there is no more available steps to execut in current workflow's steps and no new workflows
           # This is the case all workflows are finished
-          updated_workflows_finished = [current_workflow | workflows_finished]
+          updated_workflows_finished = [
+            Map.put(current_workflow, :workflow_status, "succeed") | workflows_finished
+          ]
+
           updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, nil)
-           {:reply, nil, %{state | workflows_in_progress: updated_workflows_in_progress, workflows_finished: updated_workflows_finished}}
+          Logger.info("There is no more workflows to be executed for worker: #{worker_name}")
+
+          {:reply, nil,
+           %{
+             state
+             | workflows_in_progress: updated_workflows_in_progress,
+               workflows_finished: updated_workflows_finished
+           }}
         end
+
       {%{steps: steps} = current_workflow, [head | rest]} ->
         if find_next_step(steps) != nil do
           {:reply, current_workflow, state}
         else
           # If there is no more available steps to execut in current workflow's steps,
           # we schedule a new one and move current one into finished
-          updated_workflows_finished = [current_workflow | workflows_finished]
+          updated_workflows_finished = [
+            Map.put(current_workflow, :workflow_status, "succeed") | workflows_finished
+          ]
+
           updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, head)
-           {:reply, head, %{state | workflows_in_progress: updated_workflows_in_progress, workflows_todo: rest, workflows_finished: updated_workflows_finished}}
+
+          {:reply, head,
+           %{
+             state
+             | workflows_in_progress: updated_workflows_in_progress,
+               workflows_todo: rest,
+               workflows_finished: updated_workflows_finished
+           }}
         end
     end
   end
 
+  @impl true
+  def handle_call(
+        {:schedule_workflow_for_worker, worker_name, :terminate_workflow},
+        _from,
+        %{
+          workflows_in_progress: workflows_in_progress,
+          workflows_todo: workflows_todo,
+          workflows_finished: workflows_finished
+        } = state
+      ) do
+    # Terminate the current workflow and move it to finished
+    # And move a new workflow for it.
+    case {Map.get(workflows_in_progress, worker_name), workflows_todo} do
+      {nil, []} ->
+        {:reply, nil, state}
+
+      {nil, [head | rest]} ->
+        updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, head)
+
+        {:reply, head,
+         %{state | workflows_in_progress: updated_workflows_in_progress, workflows_todo: rest}}
+
+      {%{steps: _steps} = current_workflow, []} ->
+        updated_workflows_finished = [
+          Map.put(current_workflow, :workflow_status, "terminated") | workflows_finished
+        ]
+
+        updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, nil)
+
+        {:reply, nil,
+         %{
+           state
+           | workflows_in_progress: updated_workflows_in_progress,
+             workflows_finished: updated_workflows_finished
+         }}
+
+      {%{steps: _steps} = current_workflow, [head | rest]} ->
+        updated_workflows_finished = [
+          Map.put(current_workflow, :workflow_status, "terminated") | workflows_finished
+        ]
+
+        updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, head)
+
+        {:reply, head,
+         %{
+           state
+           | workflows_in_progress: updated_workflows_in_progress,
+             workflows_todo: rest,
+             workflows_finished: updated_workflows_finished
+         }}
+    end
+  end
 
   # Callback to cancel workflow running on worker
   @impl true
@@ -326,8 +424,12 @@ defmodule Worker.Leader do
         {:noreply, state}
 
       {true, nil} ->
-                Logger.debug("#{__MODULE__} in handle_cast :execute_workflow_for_worker: #{worker_name}. But there is no associated workflow for this worker, need to schedule a workflow for it first.")
+        Logger.debug(
+          "#{__MODULE__} in handle_cast :execute_workflow_for_worker: #{worker_name}. But there is no associated workflow for this worker, need to schedule a workflow for it first."
+        )
+
         {:noreply, state}
+
       {true, %{steps: steps}} ->
         updated_state = run_next_step_for_worker(worker_name, steps, state)
         {:noreply, updated_state}
@@ -350,19 +452,25 @@ defmodule Worker.Leader do
       Logger.warn(
         "Receive :worker_step_succeed from unknow worker: #{inspect(Map.get(worker_registry, worker_name))}, ignored"
       )
+
       worker_registry |> IO.inspect(label: "#{__MODULE__} 338")
 
       {:noreply, state}
     else
       workflow = workflows_in_progress |> Map.get(worker_name)
-     %{which_module: which_module, which_function: which_function} =  step_executed = Enum.at(workflow.steps, step_result.step_index)
+
+      %{which_module: which_module, which_function: which_function} =
+        step_executed = Enum.at(workflow.steps, step_result.step_index)
 
       updated_steps =
         List.replace_at(workflow.steps, step_result.step_index, %{
           step_executed
           | step_status: "succeed"
         })
-      Logger.info("#{worker_name} execute step:#{ step_result.step_index} succeed for #{which_module}.#{which_function}")
+
+      Logger.info(
+        "#{worker_name} execute step:#{step_result.step_index} succeed for #{which_module}.#{which_function}"
+      )
 
       updated_state = put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
       {:noreply, updated_state}
@@ -471,17 +579,31 @@ defmodule Worker.Leader do
 
   def schedule_workflows(symbol) do
     %{worker_registry: worker_registry} = current_state(symbol)
+
     worker_registry
     |> Enum.map(fn {worker_name, _worker_pid} ->
-      scheduled_workflow = schedule_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
+      scheduled_workflow =
+        schedule_workflow_for_worker(%{
+          symbol: symbol,
+          worker_name: worker_name,
+          schedule: :prepare_next_todo_step
+        })
+
       {worker_name, scheduled_workflow}
     end)
     |> Map.new()
   end
 
-    # A helper function to trigger Leader to run some workflow on some worker
-  def schedule_workflow_for_worker(%{symbol: symbol, worker_name: worker_name}) do
-    GenServer.call(:"#{__MODULE__}_#{symbol}", {:schedule_workflow_for_worker, worker_name})
+  # A helper function to trigger Leader to run some workflow on some worker
+  def schedule_workflow_for_worker(%{
+        symbol: symbol,
+        worker_name: worker_name,
+        schedule: how_to_schedule
+      }) do
+    GenServer.call(
+      :"#{__MODULE__}_#{symbol}",
+      {:schedule_workflow_for_worker, worker_name, how_to_schedule}
+    )
   end
 
   def add_workflows_for_symbol(%{
@@ -519,7 +641,6 @@ defmodule Worker.Leader do
     end)
   end
 
-
   # A helper function to trigger each worker to run a todo step from its assigned workflow
   # It will update and return the latest workflows_in_progress
   def execute_workflows_for_symbol(symbol) do
@@ -545,8 +666,8 @@ defmodule Worker.Leader do
     GenServer.call(:"#{__MODULE__}_#{symbol}", {:toggle_symbol_execution})
   end
 
-  def add_new_fresh_worker(symbol) do
-    GenServer.call(:"#{__MODULE__}_#{symbol}", {:add_new_fresh_worker})
+  def add_new_worker(symbol) do
+    GenServer.call(:"#{__MODULE__}_#{symbol}", {:add_new_worker})
   end
 
   def execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name}) do
@@ -560,6 +681,4 @@ defmodule Worker.Leader do
   def worker_step_failed(%{symbol: symbol} = result) do
     GenServer.cast(:"#{__MODULE__}_#{symbol}", {:worker_step_failed, result})
   end
-
-
 end

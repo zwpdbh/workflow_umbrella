@@ -128,33 +128,6 @@ defmodule Worker do
     {:reply, updated_step_context, %{state | step_context: updated_step_context}}
   end
 
-  # defp notic_leader_worker_error(%{
-  #        leader: leader_pid,
-  #        which_module: which_module,
-  #        which_function: which_function,
-  #        step_output: stepoutput,
-  #        worker_state: state,
-  #        history: current_history
-  #      }) do
-  #   send(
-  #     leader_pid,
-  #     {:worker_step_error,
-  #      %{
-  #        which_module: which_module,
-  #        which_function: which_function,
-  #        step_output: "#{inspect(stepoutput)}",
-  #        worker_pid: self(),
-  #        worker_state: %{
-  #          state
-  #          | history: [
-  #              {which_module, which_function, "failed", "#{inspect(stepoutput)}"}
-  #              | current_history
-  #            ]
-  #        }
-  #      }}
-  #   )
-  # end
-
   # @impl true
   # def handle_cast
 

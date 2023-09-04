@@ -34,7 +34,7 @@ defmodule Worker.Collector do
         state
       ) do
     Worker.Leader.worker_step_succeed(step_result)
-    Worker.Leader.schedule_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
+    Worker.Leader.schedule_workflow_for_worker(%{symbol: symbol, worker_name: worker_name, schedule: :prepare_next_todo_step})
     Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
 
     {:noreply, state}
@@ -52,7 +52,7 @@ defmodule Worker.Collector do
     # Because the worker doesn't have the entire picture, and its process terminated. So we need to recover its history.
     # We need to let leader to start a new worker with updated history
     Worker.Leader.worker_step_failed(step_result)
-    Worker.Leader.schedule_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
+    Worker.Leader.schedule_workflow_for_worker(%{symbol: symbol, worker_name: worker_name, schedule: :terminate_workflow})
     Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
 
     {:noreply, state}
