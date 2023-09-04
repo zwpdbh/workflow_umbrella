@@ -22,7 +22,7 @@ defmodule Steps.Acstor.WorkflowConfig do
     end)
   end
 
-  def simple_replication() do
+  def azure_disk_replication() do
     [
       "az_login_using_sp",
       "az_set_subscription",
