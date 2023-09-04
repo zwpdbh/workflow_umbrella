@@ -92,6 +92,18 @@ defmodule Steps.Acstor.Replication do
     %{}
   end
 
+  def az_delete_rg(context) do
+    {:ok, _output} =
+      %{
+        cmd: "az group delete --name #{context.rg} --yes --no-wait",
+        env: [{"AZURE_CONFIG_DIR", context.session_dir}]
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+    %{}
+  end
+
   # Step 3: create resource group
   def az_create_resource_group(%{
         prefix: common_prefix,
@@ -1026,7 +1038,7 @@ defmodule Steps.Acstor.Replication do
       |> Map.merge(context)
       |> Exec.run()
 
-    if not replica_num == output |> String.trim() |> String.to_integer() do
+    if not (replica_num == output |> String.trim() |> String.to_integer()) do
       raise "number of nodes with acstor label is not equal the number of replicas: #{replica_num}"
     end
 
@@ -1038,7 +1050,7 @@ defmodule Steps.Acstor.Replication do
       |> Map.merge(context)
       |> Exec.run()
 
-    if not replica_num == output |> String.trim() |> String.to_integer() do
+    if not (replica_num == output |> String.trim() |> String.to_integer()) do
       raise "number of pod is not equal the number of replicas: #{replica_num}"
     end
 

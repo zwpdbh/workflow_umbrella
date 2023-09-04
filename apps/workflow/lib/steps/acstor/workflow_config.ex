@@ -62,7 +62,8 @@ defmodule Steps.Acstor.WorkflowConfig do
       "big_sleep",
       "label_node_back_with_acstor",
       "big_sleep",
-      "verify_rebuilding_state"
+      "verify_rebuilding_state",
+      "az_delete_rg"
     ]
   end
 end
