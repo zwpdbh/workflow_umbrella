@@ -479,7 +479,9 @@ defmodule Worker.Leader do
 
   @impl true
   def handle_cast(
-        {:worker_step_failed, %{worker_name: worker_name, worker_pid: worker_pid} = step_result},
+        {:worker_step_failed,
+         %{worker_name: worker_name, worker_pid: worker_pid, worker_state: worker_state} =
+           step_result},
         %{worker_registry: worker_registry, workflows_in_progress: workflows_in_progress} = state
       ) do
     {:noreply, state}
@@ -493,10 +495,9 @@ defmodule Worker.Leader do
       {:noreply, state}
     else
       # Find out which step failed from which workflow
-
       workflow = Map.get(workflows_in_progress, worker_name)
-      # The failed step must come from a step which is still in "in_progress" status
 
+      # The failed step must come from a step which is still in "in_progress" status
       index_for_step_in_progress =
         workflow.steps
         |> Enum.find_index(fn %{step_status: status} -> status == "in_progress" end)
@@ -505,7 +506,7 @@ defmodule Worker.Leader do
       step_executed = Enum.at(workflow.steps, index_for_step_in_progress)
       # update the workflow steps
       updated_steps =
-        List.replace_at(workflow.steps, step_result.step_index, %{
+        List.replace_at(workflow.steps, index_for_step_in_progress, %{
           step_executed
           | step_status: "failed"
         })
@@ -516,7 +517,7 @@ defmodule Worker.Leader do
 
       # the new worker will contain updated history to include the failed step
       updated_worker_state = %{
-        state
+        worker_state
         | history: [step_failure_history | crashed_worker_state.history]
       }
 
