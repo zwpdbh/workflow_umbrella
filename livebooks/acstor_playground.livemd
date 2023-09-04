@@ -48,17 +48,17 @@ Workflow.start_scenario(symbol)
 ## Execute replication workflow
 
 ```elixir
+alias Worker.Leader
+alias Steps.Acstor.WorkflowConfig
+
 Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 ```
 
 ```elixir
-alias Worker.Leader
-alias Steps.Acstor.WorkflowConfig
-
 azure_disk_workflow_definition =
   WorkflowConfig.azure_disk_replication()
   |> Enum.map(fn function_name ->
-    {"Steps.Acstor.WorkflowConfig", function_name}
+    {"Steps.Acstor.Replication", function_name}
   end)
 
 Leader.add_workflows_for_symbol(%{
