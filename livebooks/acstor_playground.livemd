@@ -40,7 +40,7 @@ symbol = "azure_disk_replication"
 
 ```elixir
 Workflow.stop_scenario(symbol)
-# Workflow.start_scenario(symbol)
+Workflow.start_scenario(symbol)
 ```
 
 <!-- livebook:{"branch_parent_index":1} -->
