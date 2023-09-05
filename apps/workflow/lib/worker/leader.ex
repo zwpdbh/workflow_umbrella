@@ -14,8 +14,7 @@ defmodule Worker.Leader do
               workflows_in_progress: %{},
               workflows_todo: [],
               workflows_finished: [],
-              symbol_execution_enabled: true,
-              retry_enabled: true
+              symbol_execution_enabled: true
   end
 
   defmodule WorkflowInstance do
@@ -24,8 +23,7 @@ defmodule Worker.Leader do
     defstruct workflow_id: "",
               steps: [],
               workflow_status: "",
-              log_file: "",
-              retry_remained: 1
+              log_file: ""
   end
 
   defmodule WorkflowStepState do
@@ -35,7 +33,8 @@ defmodule Worker.Leader do
               step_index: 0,
               step_status: "todo",
               which_function: "",
-              which_module: ""
+              which_module: "",
+              retry_count: 0
   end
 
   def start_link(symbol) do
@@ -507,8 +506,7 @@ defmodule Worker.Leader do
         _from,
         %{
           worker_registry: worker_registry,
-          workflows_in_progress: workflows_in_progress,
-          retry_enabled: retry_enabled
+          workflows_in_progress: workflows_in_progress
         } = state
       ) do
     registered_worker_pid = Map.get(worker_registry, worker_name)
@@ -521,7 +519,7 @@ defmodule Worker.Leader do
       {:reply, :ignore, state}
     else
       # Find out which step failed from which workflow
-      %{retry_remained: retry_remained} = workflow = Map.get(workflows_in_progress, worker_name)
+      workflow = Map.get(workflows_in_progress, worker_name)
 
       # The failed step must come from a step which is still in "in_progress" status
       index_for_step_in_progress =
@@ -529,29 +527,47 @@ defmodule Worker.Leader do
         |> Enum.find_index(fn %{step_status: status} -> status == "in_progress" end)
 
       # update the step status
-      %{which_module: which_module, which_function: which_function} =
+      %{which_module: which_module, which_function: which_function, retry_count: retry_count} =
         step_executed = Enum.at(workflow.steps, index_for_step_in_progress)
 
       # update the workflow steps
-      updated_steps =
-        List.replace_at(workflow.steps, index_for_step_in_progress, %{
-          step_executed
-          | step_status: "failed"
-        })
+      maximum_retry = Steps.Acstor.WorkflowConfig.retry_policy(which_function)
 
-      Logger.info(
-        "#{worker_name} execute step:#{index_for_step_in_progress} failed for #{which_module}.#{which_function}"
-      )
+      case retry_count < maximum_retry do
+        true ->
+          Logger.info(
+            "#{__MODULE__} worker_step_failed: worker_name -- #{worker_name}, step -- step:#{index_for_step_in_progress}, function -- #{which_module}.#{which_function}, retry -- #{retry_count}/#{maximum_retry}"
+          )
 
-      # We only updated the step status for the failed step.
-      updated_state = put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+          updated_steps =
+            List.replace_at(workflow.steps, index_for_step_in_progress, %{
+              step_executed
+              | step_status: "failed",
+                retry_count: retry_count + 1
+            })
 
-      # TODO::
-      case {retry_enabled, retry_remained = 0} do
-        {true, true} ->
-          {:reply, {:repaire_worker_and_retry_step, retry_remained}, updated_state}
+          # We only updated the step status for the failed step.
+          updated_state =
+            put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+
+          {:reply, :repaire_worker_and_retry_step, updated_state}
 
         false ->
+          # We reach retry limit for that step
+          Logger.info(
+            "#{__MODULE__} worker_step_failed reach retry limit: worker_name -- #{worker_name}, step -- step:#{index_for_step_in_progress}, function -- #{which_module}.#{which_function}, retry -- #{retry_count}/#{maximum_retry}"
+          )
+
+          updated_steps =
+            List.replace_at(workflow.steps, index_for_step_in_progress, %{
+              step_executed
+              | step_status: "failed"
+            })
+
+          # We only updated the step status for the failed step.
+          updated_state =
+            put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+
           {:reply, :skip_and_schedule_next_workflow, updated_state}
       end
     end
@@ -598,26 +614,6 @@ defmodule Worker.Leader do
     end
   end
 
-  # defp test() do
-  #   # We need to start a new worker to hold(update) the crashed worker's history.
-  #   crashed_worker_state = step_result.worker_state
-  #   step_failure_history = process_failed_step_result(step_result)
-
-  #   # the new worker will contain updated history to include the failed step
-  #   updated_worker_state = %{
-  #     worker_state
-  #     | history: [step_failure_history | crashed_worker_state.history]
-  #   }
-
-  #   {:ok, new_worker_pid} = start_new_worker_with_state(updated_worker_state)
-
-  #   # update the worker name -- worker pid register
-  #   updated_worker_registry = Map.put(worker_registry, worker_name, new_worker_pid)
-
-  #   updated_state = put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
-  #   updated_state = put_in(updated_state, [:worker_registry], updated_worker_registry)
-  # end
-
   @impl true
   def handle_cast(
         {:execute_workflow_for_worker, worker_name},
@@ -650,8 +646,11 @@ defmodule Worker.Leader do
 
   # Callback which indicate some worker is ready
   @impl true
-  def handle_cast({:worker_is_ready, some_worker}, %{} = state) do
-    Logger.info("Worker #{inspect(some_worker)} is ready")
+  def handle_cast(
+        {:worker_is_ready, %{worker_name: worker_name, worker_pid: worker_pid}},
+        %{} = state
+      ) do
+    Logger.info("Worker: #{worker_name} -- #{inspect(worker_pid)} is ready")
 
     # GenServer.cast(some_worker, {:process_workflow, workflow})
     {:noreply, state}
@@ -752,7 +751,8 @@ defmodule Worker.Leader do
         step_id: Ecto.UUID.generate(),
         step_status: "todo",
         which_module: which_module,
-        which_function: which_function
+        which_function: which_function,
+        retry_count: 0
       }
     end)
   end

@@ -22,20 +22,19 @@ defmodule Worker do
   end
 
   @impl true
-  def init(%State{symbol: symbol} = state) do
-    Logger.info("Initializing new worker for #{symbol}")
-
+  def init(%State{symbol: _symbol} = state) do
     {:ok, state, {:continue, :ask_task}}
   end
 
   @impl true
   def handle_continue(
         :ask_task,
-        %State{report_to: leader, symbol: symbol, step_context: step_contex} = state
+        %State{report_to: leader, symbol: symbol, step_context: step_contex, name: worker_name} =
+          state
       ) do
     # (TODO)The place to fully initialize worker before doing task
     # Notice leader that I am ready
-    GenServer.cast(leader, {:worker_is_ready, self()})
+    GenServer.cast(leader, {:worker_is_ready, %{worker_name: worker_name, worker_pid: self()}})
 
     updated_step_context = Map.merge(step_contex, %{symbol: symbol})
     {:noreply, %{state | step_context: updated_step_context}}
