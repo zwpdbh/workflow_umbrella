@@ -39,8 +39,11 @@ symbol = "azure_disk_replication"
 ```
 
 ```elixir
+alias Worker.Leader
+alias Steps.Acstor.WorkflowConfig
+
 Workflow.stop_scenario(symbol)
-Workflow.start_scenario(symbol)
+# Workflow.start_scenario(symbol)
 ```
 
 <!-- livebook:{"branch_parent_index":1} -->
@@ -48,9 +51,6 @@ Workflow.start_scenario(symbol)
 ## Execute replication workflow
 
 ```elixir
-alias Worker.Leader
-alias Steps.Acstor.WorkflowConfig
-
 Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 ```
 
@@ -80,8 +80,18 @@ Leader.execute_workflows_for_symbol(symbol)
 
 ```elixir
 Leader.current_state(symbol)
-|> Map.get(:workflows_finished)
-|> Enum.map(fn x -> {x.workflow_id, x.workflow_status} end)
+# |> Map.get(:workflows_finished)
+# |> Enum.map(fn x -> {x.workflow_id, x.workflow_status} end)
+```
+
+<!-- livebook:{"branch_parent_index":1} -->
+
+## Overwrite kubectl config from worker
+
+```elixir
+leader_state = Leader.current_state(symbol)
+worker_pid = leader_state.worker_registry |> Map.get("worker_mhw2fl")
+Worker.worker_state(worker_pid)
 ```
 
 <!-- livebook:{"branch_parent_index":1} -->
@@ -102,13 +112,13 @@ state.step_context
 ## Execute arbitary az command
 
 ```elixir
-{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker1")
+{:ok, worker_pid} = Worker.Leader.get_worker_by_name(symbol, "worker_mhw2fl")
 state = Worker.worker_state(worker_pid)
 
 state.step_context
 |> Map.merge(%{})
 |> Steps.Acstor.Replication.test_az_cmd(
-  "az group delete --name acstorbyzhaowei-nd19t2 --yes --no-wait"
+  "az group delete --name acstorbyzhaowei-mf0gne --yes --no-wait"
 )
 ```
 
@@ -117,17 +127,17 @@ state.step_context
 ```elixir
 # Settings 
 symbol = "nvme"
+
+alias Worker.Leader
+alias Steps.Acstor.WorkflowConfig
 ```
 
-<!-- livebook:{"branch_parent_index":5} -->
+<!-- livebook:{"branch_parent_index":6} -->
 
 ## Control Scneario execution
 
 ```elixir
 Workflow.stop_scenario(symbol)
-```
-
-```elixir
 Workflow.start_scenario(symbol)
 ```
 
@@ -135,14 +145,9 @@ Workflow.start_scenario(symbol)
 Kino.Process.render_sup_tree(DynamicSymbolSupervisor)
 ```
 
-<!-- livebook:{"branch_parent_index":5} -->
+<!-- livebook:{"branch_parent_index":6} -->
 
 ## Control Leader
-
-```elixir
-alias Worker.Leader
-alias Steps.Acstor.WorkflowConfig
-```
 
 ```elixir
 Leader.toggle_symbol_execution(symbol)
@@ -150,7 +155,7 @@ Leader.toggle_symbol_execution(symbol)
 
 ```elixir
 workflow_definitions =
-  1..2
+  1..1
   |> Enum.to_list()
   |> Enum.map(fn _ ->
     WorkflowConfig.dummy_workflow()
@@ -160,13 +165,7 @@ Leader.add_workflows_for_symbol(%{
   symbol: symbol,
   workflows_definition: workflow_definitions
 })
-```
 
-```elixir
-Leader.current_state(symbol)
-```
-
-```elixir
 Leader.schedule_workflows(symbol)
 ```
 
@@ -175,11 +174,16 @@ Leader.execute_workflows_for_symbol(symbol)
 ```
 
 ```elixir
-Leader.current_state(symbol)
-# |> Map.get(:workflows_todo) |> length()
+leader_state = Leader.current_state(symbol)
 ```
 
 ```elixir
-state = Leader.current_state(symbol)
-state.workflows_finished |> Enum.random()
+leader_state.worker_registry
+|> Enum.map(fn {worker_name, worker_pid} ->
+  %{worker_name: worker_name, worker_state: Worker.worker_state(worker_pid)}
+end)
+```
+
+```elixir
+:infinite > 0
 ```

@@ -11,6 +11,7 @@ defmodule Steps.Acstor.WorkflowConfig do
     #   raise "time out"
     # end
 
+    Process.sleep(1_000)
     raise "time out"
 
     %{}

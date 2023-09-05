@@ -14,7 +14,8 @@ defmodule Worker.Leader do
               workflows_in_progress: %{},
               workflows_todo: [],
               workflows_finished: [],
-              symbol_execution_enabled: true
+              symbol_execution_enabled: true,
+              retry_enabled: true
   end
 
   defmodule WorkflowInstance do
@@ -23,7 +24,8 @@ defmodule Worker.Leader do
     defstruct workflow_id: "",
               steps: [],
               workflow_status: "",
-              log_file: ""
+              log_file: "",
+              retry_remained: 1
   end
 
   defmodule WorkflowStepState do
@@ -426,59 +428,6 @@ defmodule Worker.Leader do
     end
   end
 
-  # @impl true
-  # def handle_call(
-  #       {:schedule_workflow_for_worker, worker_name, :terminate_workflow},
-  #       _from,
-  #       %{
-  #         workflows_in_progress: workflows_in_progress,
-  #         workflows_todo: workflows_todo,
-  #         workflows_finished: workflows_finished
-  #       } = state
-  #     ) do
-  #   # Terminate the current workflow and move it to finished
-  #   # And move a new workflow for it.
-  #   case {Map.get(workflows_in_progress, worker_name), workflows_todo} do
-  #     {nil, []} ->
-  #       {:reply, nil, state}
-
-  #     {nil, [head | rest]} ->
-  #       updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, head)
-
-  #       {:reply, head,
-  #        %{state | workflows_in_progress: updated_workflows_in_progress, workflows_todo: rest}}
-
-  #     {%{steps: _steps} = current_workflow, []} ->
-  #       updated_workflows_finished = [
-  #         Map.put(current_workflow, :workflow_status, "terminated") | workflows_finished
-  #       ]
-
-  #       updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, nil)
-
-  #       {:reply, nil,
-  #        %{
-  #          state
-  #          | workflows_in_progress: updated_workflows_in_progress,
-  #            workflows_finished: updated_workflows_finished
-  #        }}
-
-  #     {%{steps: _steps} = current_workflow, [head | rest]} ->
-  #       updated_workflows_finished = [
-  #         Map.put(current_workflow, :workflow_status, "terminated") | workflows_finished
-  #       ]
-
-  #       updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, head)
-
-  #       {:reply, head,
-  #        %{
-  #          state
-  #          | workflows_in_progress: updated_workflows_in_progress,
-  #            workflows_todo: rest,
-  #            workflows_finished: updated_workflows_finished
-  #        }}
-  #   end
-  # end
-
   # Callback to cancel workflow running on worker
   @impl true
   def handle_call(
@@ -550,11 +499,16 @@ defmodule Worker.Leader do
 
   @impl true
   def handle_call(
-        {:worker_step_failed, %{worker_name: worker_name, worker_pid: worker_pid} = _step_result},
+        {:worker_step_failed,
+         %{
+           worker_name: worker_name,
+           worker_pid: worker_pid
+         } = _step_result},
         _from,
         %{
           worker_registry: worker_registry,
-          workflows_in_progress: workflows_in_progress
+          workflows_in_progress: workflows_in_progress,
+          retry_enabled: retry_enabled
         } = state
       ) do
     registered_worker_pid = Map.get(worker_registry, worker_name)
@@ -567,7 +521,7 @@ defmodule Worker.Leader do
       {:reply, :ignore, state}
     else
       # Find out which step failed from which workflow
-      workflow = Map.get(workflows_in_progress, worker_name)
+      %{retry_remained: retry_remained} = workflow = Map.get(workflows_in_progress, worker_name)
 
       # The failed step must come from a step which is still in "in_progress" status
       index_for_step_in_progress =
@@ -589,15 +543,21 @@ defmodule Worker.Leader do
         "#{worker_name} execute step:#{index_for_step_in_progress} failed for #{which_module}.#{which_function}"
       )
 
+      # We only updated the step status for the failed step.
       updated_state = put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
 
-      {:reply, :repaire_worker_and_schedule_next_workflow, updated_state}
+      # TODO::
+      case {retry_enabled, retry_remained = 0} do
+        {true, true} ->
+          {:reply, {:repaire_worker_and_retry_step, retry_remained}, updated_state}
+
+        false ->
+          {:reply, :skip_and_schedule_next_workflow, updated_state}
+      end
     end
   end
 
-  @doc """
-  This this callback we start new worker and register it
-  """
+  # This this callback we start new worker and register it and it inherits the previous crashed worker's state.
   @impl true
   def handle_call(
         {:repaire_worker_from_step_result,
@@ -612,7 +572,7 @@ defmodule Worker.Leader do
 
     if worker_pid != registered_worker_pid do
       Logger.warn(
-        "Receive :worker_step_failed from unknow worker: #{inspect(Map.get(worker_registry, worker_name))}, ignored. The current worker_registry is #{inspect(worker_registry)}"
+        "#{__MODULE__} repaire_worker_and_retry_step for unknow worker: #{inspect(Map.get(worker_registry, worker_name))}, ignored. The current worker_registry is #{inspect(worker_registry)}"
       )
 
       {:reply, :ignore, state}
@@ -843,6 +803,17 @@ defmodule Worker.Leader do
   end
 
   def repaire_worker_from_step_result(%{symbol: symbol} = result) do
-    GenServer.call(:"#{__MODULE__}_#{symbol}", {:repaire_worker_from_step_result, result})
+    GenServer.call(
+      :"#{__MODULE__}_#{symbol}",
+      {:repaire_worker_from_step_result, result}
+    )
   end
+
+  # def repaire_worker_and_retry_step(%{symbol: symbol} = result, retry_remained)
+  #     when is_integer(retry_remained) do
+  #   GenServer.call(
+  #     :"#{__MODULE__}_#{symbol}",
+  #     {:repaire_worker_and_retry_step, result, retry_remained}
+  #   )
+  # end
 end
