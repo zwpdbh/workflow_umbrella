@@ -40,7 +40,7 @@ symbol = "azure_disk_replication"
 
 ```elixir
 Workflow.stop_scenario(symbol)
-Workflow.start_scenario(symbol)
+# Workflow.start_scenario(symbol)
 ```
 
 <!-- livebook:{"branch_parent_index":1} -->
@@ -160,8 +160,6 @@ Leader.add_workflows_for_symbol(%{
   symbol: symbol,
   workflows_definition: workflow_definitions
 })
-
-# Leader.add_new_worker(symbol)
 ```
 
 ```elixir
@@ -178,6 +176,13 @@ Leader.execute_workflows_for_symbol(symbol)
 
 ```elixir
 Leader.current_state(symbol)
-|> Map.get(:workflows_finished)
-|> Enum.map(fn x -> {x.workflow_id, x.workflow_status} end)
+# |> Map.get(:workflows_todo) |> length()
+```
+
+```elixir
+Leader.terminate_worker(%{symbol: symbol, worker_name: "worker_eqi9w7"})
+```
+
+```elixir
+Leader.add_new_worker(symbol)
 ```

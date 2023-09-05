@@ -4,12 +4,12 @@ defmodule Steps.Acstor.WorkflowConfig do
   """
 
   def step_may_fail(_context) do
-    n = Enum.random(0..7)
-    Process.sleep(n * 1_000)
+    # n = Enum.random(0..7)
+    # Process.sleep(n * 1_000)
 
-    if n > 5 do
-      raise "time out"
-    end
+    # if n > 5 do
+    #   raise "time out"
+    # end
 
     %{}
   end

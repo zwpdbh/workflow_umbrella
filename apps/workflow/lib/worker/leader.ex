@@ -6,7 +6,7 @@ defmodule Worker.Leader do
     use Accessible
 
     defstruct symbol: nil,
-              settings: nil,
+              setting: nil,
               # worker_registry contains the mapping (k, v) where k is the worker_name, v is the worker_pid
               worker_registry: %{},
               # workflows_in_progress is map(k, v) where k is the worker_name, v is one workflow %{workflow_id: xx, steps: [aa, bb,cc]}
@@ -59,30 +59,41 @@ defmodule Worker.Leader do
 
     case leader_backup do
       nil ->
-        settings = fetch_symbol_settings(symbol)
-        worker_state = fresh_worker_state(settings)
+        symbol_setting = fetch_symbol_settings(symbol)
 
         %{
           worker_registry: updated_worker_registry,
           workflows_in_progress: updated_workflows_in_progress
         } =
-          1..settings.n_workers
+          1..symbol_setting.n_workers
           |> Enum.to_list()
           |> Enum.reduce(
             %{worker_registry: worker_registry, workflows_in_progress: workflows_in_progress},
             fn _, acc ->
-              start_one_fresh_worker_and_update_registry(%{
-                worker_state: worker_state,
-                workflows_in_progress: acc.workflows_in_progress,
-                worker_registry: acc.worker_registry
-              })
+              %{
+                worker_name: worker_name,
+                worker_pid: worker_pid
+              } =
+                start_one_fresh_worker(%{
+                  symbol_setting: symbol_setting,
+                  workflows_in_progress: acc.workflows_in_progress,
+                  worker_registry: acc.worker_registry
+                })
+
+              updated_worker_registry = Map.put(acc.worker_registry, worker_name, worker_pid)
+              updated_workflows_in_progress = Map.put(acc.workflows_in_progress, worker_name, nil)
+
+              %{
+                worker_registry: updated_worker_registry,
+                workflows_in_progress: updated_workflows_in_progress
+              }
             end
           )
 
         {:noreply,
          %{
            state
-           | settings: settings,
+           | setting: symbol_setting,
              worker_registry: updated_worker_registry,
              workflows_in_progress: updated_workflows_in_progress
          }}
@@ -120,20 +131,6 @@ defmodule Worker.Leader do
     )
   end
 
-  def start_new_worker(%Worker.State{symbol: symbol} = worker_state) do
-    # Start worker
-    DynamicSupervisor.start_child(
-      SymbolSupervisor.get_dynamic_worker_supervisor(symbol),
-      Worker.child_spec(worker_state)
-    )
-
-    # Option 2
-    # DynamicSupervisor.start_child(
-    #     SymbolSupervisor.get_dynamic_worker_supervisor(symbol),
-    #     {Worker, state}
-    #   )
-  end
-
   defp process_failed_step_result(%{err: err, top_stacktrace: top_stacktrace} = _step_result) do
     case %{err: err, top_stacktrace: top_stacktrace} do
       %{
@@ -153,22 +150,35 @@ defmodule Worker.Leader do
     end
   end
 
-  defp start_one_fresh_worker_and_update_registry(%{
-         worker_state: worker_state,
-         workflows_in_progress: workflows_in_progress,
-         worker_registry: worker_registry
-       }) do
-    current_workers = worker_registry |> map_size()
-    new_worker_name = "worker#{current_workers + 1}"
-    {:ok, worker_pid} = Map.merge(worker_state, %{name: new_worker_name}) |> start_new_worker()
-
-    updated_worker_registry = Map.put(worker_registry, new_worker_name, worker_pid)
-    updated_workflows_in_progress = Map.put(workflows_in_progress, new_worker_name, nil)
+  def start_new_worker_with_state(%Worker.State{symbol: symbol, name: worker_name} = worker_state) do
+    # Start worker
+    {:ok, worker_pid} =
+      DynamicSupervisor.start_child(
+        SymbolSupervisor.get_dynamic_worker_supervisor(symbol),
+        Worker.child_spec(worker_state)
+      )
 
     %{
-      workflows_in_progress: updated_workflows_in_progress,
-      worker_registry: updated_worker_registry
+      worker_name: worker_name,
+      worker_pid: worker_pid
     }
+
+    # Option 2
+    # DynamicSupervisor.start_child(
+    #     SymbolSupervisor.get_dynamic_worker_supervisor(symbol),
+    #     {Worker, state}
+    #   )
+  end
+
+  defp start_one_fresh_worker(%{
+         symbol_setting: symbol_setting
+       }) do
+    %{step_context: %{suffix: suffix}} = worker_state = fresh_worker_state(symbol_setting)
+
+    new_worker_name = "worker_#{suffix}"
+    new_worker_state = Map.put(worker_state, :name, new_worker_name)
+
+    new_worker_state |> start_new_worker_with_state()
   end
 
   defp find_next_step(steps) do
@@ -250,17 +260,25 @@ defmodule Worker.Leader do
           symbol: symbol
         } = state
       ) do
-    settings = fetch_symbol_settings(symbol)
-    worker_state = fresh_worker_state(settings)
+    symbol_setting = fetch_symbol_settings(symbol)
 
-    updated_in_progress_and_registry =
-      start_one_fresh_worker_and_update_registry(%{
-        worker_state: worker_state,
+    %{worker_name: new_worker_name, worker_pid: new_worker_pid} =
+      created_worker_info =
+      start_one_fresh_worker(%{
+        symbol_setting: symbol_setting,
         workflows_in_progress: workflows_in_progress,
         worker_registry: worker_registry
       })
 
-    {:reply, updated_in_progress_and_registry, Map.merge(state, updated_in_progress_and_registry)}
+    updated_worker_registry = Map.put(worker_registry, new_worker_name, new_worker_pid)
+    updated_workflows_in_progress = Map.put(workflows_in_progress, new_worker_name, nil)
+
+    {:reply, created_worker_info,
+     %{
+       state
+       | workflows_in_progress: updated_workflows_in_progress,
+         worker_registry: updated_worker_registry
+     }}
   end
 
   @impl true
@@ -276,8 +294,17 @@ defmodule Worker.Leader do
     worker_pid = Map.get(worker_registry, worker_name)
 
     if worker_pid != nil do
-      updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, nil)
-      updated_worker_registry = Map.put(worker_registry, worker_name, nil)
+      DynamicSupervisor.terminate_child(
+        SymbolSupervisor.get_dynamic_worker_supervisor(symbol),
+        worker_pid
+      )
+
+      updated_workflows_in_progress = Map.delete(workflows_in_progress, worker_name)
+      updated_worker_registry = Map.delete(worker_registry, worker_name)
+
+      Logger.info(
+        "#{__MODULE__} terminate_worker for #{worker_name} because it finished one workflow succeed"
+      )
 
       {:reply, {:ok, worker_pid},
        %{
@@ -287,7 +314,7 @@ defmodule Worker.Leader do
        }}
     else
       Logger.warn(
-        "Try to terminate worker: #{worker_name} for symbol: #{symbol}, but it is not registered. Do nothing."
+        "Try to terminate worker: #{worker_name} for symbol: #{symbol}, but #{worker_name} is not registered. Do nothing."
       )
 
       {:reply, {:err, "worker: #{worker_name} not registered for symbol: #{symbol}"}, state}
@@ -327,16 +354,26 @@ defmodule Worker.Leader do
         {:reply, nil, state}
 
       {nil, [head | rest]} ->
-        %{step_context: %{log_file: log_file}} =
-          _worker_state = Worker.worker_state(worker_registry[worker_name])
+        worker_pid = Map.get(worker_registry, worker_name)
 
-        scheduled_workflow = head |> Map.put(:log_file, log_file)
+        if worker_pid == nil do
+          Logger.debug(
+            "#{__MODULE__} schedule_workflow_for_worker but there is no worker registered for #{worker_name}"
+          )
 
-        updated_workflows_in_progress =
-          Map.put(workflows_in_progress, worker_name, scheduled_workflow)
+          {:reply, {:err, "not registered worker send schedule workflow request"}, state}
+        else
+          %{step_context: %{log_file: log_file}} =
+            _worker_state = Worker.worker_state(worker_registry[worker_name])
 
-        {:reply, scheduled_workflow,
-         %{state | workflows_in_progress: updated_workflows_in_progress, workflows_todo: rest}}
+          scheduled_workflow = head |> Map.put(:log_file, log_file)
+
+          updated_workflows_in_progress =
+            Map.put(workflows_in_progress, worker_name, scheduled_workflow)
+
+          {:reply, scheduled_workflow,
+           %{state | workflows_in_progress: updated_workflows_in_progress, workflows_todo: rest}}
+        end
 
       {%{steps: steps}, []} ->
         Logger.info("There is no more workflows to be executed for worker: #{worker_name}")
@@ -459,10 +496,6 @@ defmodule Worker.Leader do
      }}
   end
 
-  @doc """
-  Indicate a step from executed by some worker succeed.
-  We return what should be done next
-  """
   @impl true
   def handle_call(
         {:worker_step_succeed, %{worker_name: worker_name, worker_pid: worker_pid} = step_result},
@@ -512,16 +545,13 @@ defmodule Worker.Leader do
 
   @impl true
   def handle_call(
-        {:worker_step_failed,
-         %{worker_name: worker_name, worker_pid: worker_pid, worker_state: worker_state} =
-           step_result},
+        {:worker_step_failed, %{worker_name: worker_name, worker_pid: worker_pid} = _step_result},
         _from,
         %{
           worker_registry: worker_registry,
           workflows_in_progress: workflows_in_progress
         } = state
       ) do
-    {:reply, "TODO", state}
     registered_worker_pid = Map.get(worker_registry, worker_name)
 
     if worker_pid != registered_worker_pid do
@@ -540,7 +570,9 @@ defmodule Worker.Leader do
         |> Enum.find_index(fn %{step_status: status} -> status == "in_progress" end)
 
       # update the step status
-      step_executed = Enum.at(workflow.steps, index_for_step_in_progress)
+      %{which_module: which_module, which_function: which_function} =
+        step_executed = Enum.at(workflow.steps, index_for_step_in_progress)
+
       # update the workflow steps
       updated_steps =
         List.replace_at(workflow.steps, index_for_step_in_progress, %{
@@ -548,6 +580,38 @@ defmodule Worker.Leader do
           | step_status: "failed"
         })
 
+      Logger.info(
+        "#{worker_name} execute step:#{index_for_step_in_progress} failed for #{which_module}.#{which_function}"
+      )
+
+      updated_state = put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+
+      {:reply, :repaire_worker_and_schedule_next_workflow, updated_state}
+    end
+  end
+
+  @doc """
+  This this callback we start new worker and register it
+  """
+  @impl true
+  def handle_call(
+        {:repaire_worker_from_step_result,
+         %{worker_name: worker_name, worker_pid: worker_pid, worker_state: worker_state} =
+           step_result},
+        _from,
+        %{
+          worker_registry: worker_registry
+        } = state
+      ) do
+    registered_worker_pid = Map.get(worker_registry, worker_name)
+
+    if worker_pid != registered_worker_pid do
+      Logger.warn(
+        "Receive :worker_step_failed from unknow worker: #{inspect(Map.get(worker_registry, worker_name))}, ignored. The current worker_registry is #{inspect(worker_registry)}"
+      )
+
+      {:reply, :ignore, state}
+    else
       # We need to start a new worker to hold(update) the crashed worker's history.
       crashed_worker_state = step_result.worker_state
       step_failure_history = process_failed_step_result(step_result)
@@ -558,26 +622,36 @@ defmodule Worker.Leader do
         | history: [step_failure_history | crashed_worker_state.history]
       }
 
-      {:ok, new_worker_pid} = start_new_worker(updated_worker_state)
+      %{worker_name: new_worker_name, worker_pid: new_worker_pid} =
+        start_new_worker_with_state(updated_worker_state)
 
       # update the worker name -- worker pid register
-      updated_worker_registry = Map.put(worker_registry, worker_name, new_worker_pid)
+      updated_worker_registry = Map.put(worker_registry, new_worker_name, new_worker_pid)
+      updated_state = put_in(state, [:worker_registry], updated_worker_registry)
 
-      updated_state = put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
-      updated_state = put_in(updated_state, [:worker_registry], updated_worker_registry)
-
-      case find_next_step(updated_steps) do
-        # TODO: define retry policy and based on retry policy, we decide want to do next
-
-        nil ->
-          {:reply, :schedule_next_workflow, updated_state}
-
-        # Currently, we just want to skip the failed workflow and schedule next workflow
-        _ ->
-          {:reply, :schedule_next_workflow, updated_state}
-      end
+      {:reply, :repaire_worker_and_schedule_next_workflow, updated_state}
     end
   end
+
+  # defp test() do
+  #   # We need to start a new worker to hold(update) the crashed worker's history.
+  #   crashed_worker_state = step_result.worker_state
+  #   step_failure_history = process_failed_step_result(step_result)
+
+  #   # the new worker will contain updated history to include the failed step
+  #   updated_worker_state = %{
+  #     worker_state
+  #     | history: [step_failure_history | crashed_worker_state.history]
+  #   }
+
+  #   {:ok, new_worker_pid} = start_new_worker_with_state(updated_worker_state)
+
+  #   # update the worker name -- worker pid register
+  #   updated_worker_registry = Map.put(worker_registry, worker_name, new_worker_pid)
+
+  #   updated_state = put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+  #   updated_state = put_in(updated_state, [:worker_registry], updated_worker_registry)
+  # end
 
   @impl true
   def handle_cast(
@@ -761,5 +835,9 @@ defmodule Worker.Leader do
 
   def worker_step_failed(%{symbol: symbol} = result) do
     GenServer.call(:"#{__MODULE__}_#{symbol}", {:worker_step_failed, result})
+  end
+
+  def repaire_worker_from_step_result(%{symbol: symbol} = result) do
+    GenServer.call(:"#{__MODULE__}_#{symbol}", {:repaire_worker_from_step_result, result})
   end
 end
