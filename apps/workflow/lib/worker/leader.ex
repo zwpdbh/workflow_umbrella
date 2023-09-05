@@ -287,6 +287,7 @@ defmodule Worker.Leader do
         _from,
         %{
           workflows_in_progress: workflows_in_progress,
+          workflows_finished: workflows_finished,
           worker_registry: worker_registry,
           symbol: symbol
         } = state
@@ -299,6 +300,9 @@ defmodule Worker.Leader do
         worker_pid
       )
 
+      workflow_finished = Map.get(workflows_in_progress, worker_name)
+
+      updated_workflows_finished = [workflow_finished | workflows_finished]
       updated_workflows_in_progress = Map.delete(workflows_in_progress, worker_name)
       updated_worker_registry = Map.delete(worker_registry, worker_name)
 
@@ -310,6 +314,7 @@ defmodule Worker.Leader do
        %{
          state
          | workflows_in_progress: updated_workflows_in_progress,
+           workflows_finished: updated_workflows_finished,
            worker_registry: updated_worker_registry
        }}
     else
