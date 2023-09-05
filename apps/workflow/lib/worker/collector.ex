@@ -33,9 +33,29 @@ defmodule Worker.Collector do
         {:worker_report_step_succeed, %{symbol: symbol, worker_name: worker_name} = step_result},
         state
       ) do
-    Worker.Leader.worker_step_succeed(step_result)
-    Worker.Leader.schedule_workflow_for_worker(%{symbol: symbol, worker_name: worker_name, schedule: :prepare_next_todo_step})
-    Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
+    case Worker.Leader.worker_step_succeed(step_result) do
+      :ignore ->
+        :do_nothing
+
+      :schedule_next_workflow ->
+        # (TODO) Based on different symbol, we may want to reuse the worker context or want to use a fresh new worker.
+        # Here, we just use fresh new worker.
+        {:ok, _worker_pid} =
+          Worker.Leader.terminate_worker(%{symbol: symbol, worker_name: worker_name})
+
+        Worker.Leader.add_new_worker(symbol)
+
+        Worker.Leader.schedule_workflow_for_worker(%{
+          symbol: symbol,
+          worker_name: worker_name,
+          schedule_method: :next_workflow
+        })
+
+        Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
+
+      :execute_next_step ->
+        Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
+    end
 
     {:noreply, state}
   end
@@ -45,15 +65,29 @@ defmodule Worker.Collector do
         {:worker_report_step_crash, %{symbol: symbol, worker_name: worker_name} = step_result},
         state
       ) do
-    # a worker report one step executed succeed.
-    # TODO: This is the place we can do retry or cancel or suspend
+    case Worker.Leader.worker_step_failed(step_result) do
+      :ignore ->
+        :do_nothing
 
-    # For a failed step execute, don't forget to update worker's history.
-    # Because the worker doesn't have the entire picture, and its process terminated. So we need to recover its history.
-    # We need to let leader to start a new worker with updated history
-    Worker.Leader.worker_step_failed(step_result)
-    Worker.Leader.schedule_workflow_for_worker(%{symbol: symbol, worker_name: worker_name, schedule: :terminate_workflow})
-    Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
+      :schedule_next_workflow ->
+        # (TODO) Based on different symbol, we may want to reuse the worker context or want to use a fresh new worker.
+        # Here, we just use fresh new worker.
+        {:ok, _worker_pid} =
+          Worker.Leader.terminate_worker(%{symbol: symbol, worker_name: worker_name})
+
+        Worker.Leader.add_new_worker(symbol)
+
+        Worker.Leader.schedule_workflow_for_worker(%{
+          symbol: symbol,
+          worker_name: worker_name,
+          schedule_method: :next_workflow
+        })
+
+        Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
+
+      :execute_next_step ->
+        Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
+    end
 
     {:noreply, state}
   end

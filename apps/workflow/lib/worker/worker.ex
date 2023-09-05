@@ -128,6 +128,11 @@ defmodule Worker do
     {:reply, updated_step_context, %{state | step_context: updated_step_context}}
   end
 
+  @impl true
+  def handle_call({:stop}, _from, state) do
+    {:stop, :normal, state}
+  end
+
   # @impl true
   # def handle_cast
 
@@ -163,5 +168,9 @@ defmodule Worker do
   # Helper function to add extra context
   def add_worker_context(worker_pid, new_context) when is_map(new_context) do
     GenServer.call(worker_pid, {:add_new_context, new_context})
+  end
+
+  def stop(worker_pid) do
+    GenServer.call(worker_pid, {:stop})
   end
 end
