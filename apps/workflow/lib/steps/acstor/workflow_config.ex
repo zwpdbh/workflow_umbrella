@@ -11,6 +11,8 @@ defmodule Steps.Acstor.WorkflowConfig do
     #   raise "time out"
     # end
 
+    raise "time out"
+
     %{}
   end
 

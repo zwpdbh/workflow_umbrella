@@ -180,9 +180,6 @@ Leader.current_state(symbol)
 ```
 
 ```elixir
-Leader.terminate_worker(%{symbol: symbol, worker_name: "worker_eqi9w7"})
-```
-
-```elixir
-Leader.add_new_worker(symbol)
+state = Leader.current_state(symbol)
+state.workflows_finished |> Enum.random()
 ```
