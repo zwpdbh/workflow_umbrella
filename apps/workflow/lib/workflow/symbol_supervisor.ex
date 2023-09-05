@@ -12,7 +12,7 @@ defmodule SymbolSupervisor do
 
     Supervisor.init(
       [
-        {Worker.Monitor, symbol},
+        {Worker.Collector, symbol},
         {
           DynamicSupervisor,
           strategy: :one_for_one, name: get_dynamic_worker_supervisor(symbol)

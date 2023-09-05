@@ -41,6 +41,25 @@ defmodule Worker do
     {:noreply, %{state | step_context: updated_step_context}}
   end
 
+  @impl true
+  def terminate(
+        {err, [top_stacktrace | _rest] = _stacktrace} = _reason,
+        %{symbol: symbol, name: worker_name} = state
+      ) do
+    Worker.Collector.report_step_for_symbol(symbol, {:worker_report_step_crash,
+     %{
+       # We pass worker's id to let Leader verify in its worker_registry
+       symbol: symbol,
+       worker_pid: self(),
+       worker_name: worker_name,
+       err: err,
+       top_stacktrace: top_stacktrace,
+       worker_state: state
+     }})
+
+    :normal
+  end
+
   # Callback for execute a step and update worker's internal state
   # The worker is not aware of the concept of workflow.
   # The worker just execute a function assigned to it using context it current holds
@@ -52,16 +71,6 @@ defmodule Worker do
     # We need to update to leader that we are running some step because the internal state will be blocked in current process.
     # If some step takes a lot of time to execute, we need to update let leader know how this.
 
-    # (TODO) maybe we just need to keep a "in_progress" table in leader ?
-    # {:ok, worker_leader_pid} = get_leader_pid_from_symbol(symbol)
-
-    # send(
-    #   worker_leader_pid,
-    #   {:worker_in_progress, %{state | history: {}}}
-    # )
-
-    # if the execution of step has no error, we update context and history
-    # if there is error, the terminate callback will handle
     new_context = run_and_update_context(context, module_name, fun_name)
 
     updated_context = Map.merge(context, new_context)
@@ -74,7 +83,7 @@ defmodule Worker do
   # Callback almost same from above except this will update its step execution result to Leader
   @impl true
   def handle_cast(
-        {:run_step,
+        {:run_step_with_id,
          %{
            worker_name: worker_name,
            which_module: which_module,
@@ -87,23 +96,17 @@ defmodule Worker do
     new_context = run_and_update_context(context, which_module, which_function)
     updated_context = Map.merge(context, new_context)
     updated_history = [{which_module, which_function, "succeed", nil} | history]
-    updated_state = %{state | step_context: updated_context, history: updated_history}
 
-    {:ok, worker_leader_pid} = Worker.Leader.get_leader_pid_from_symbol(symbol)
+    Worker.Collector.report_step_for_symbol(symbol, {:worker_report_step_succeed,
+     %{
+       # We pass worker's id to let Leader verify in its worker_registry
+       symbol: symbol,
+       worker_pid: self(),
+       worker_name: worker_name,
+       step_index: step_index
+     }})
 
-    send(
-      worker_leader_pid,
-      {:worker_step_finished,
-       %{
-         # We pass worker's id to let Leader verify in its worker_registry
-         worker_pid: self(),
-         worker_name: worker_name,
-         step_index: step_index,
-         step_status: "succeed"
-       }}
-    )
-
-    {:noreply, updated_state}
+    {:noreply, %{state | step_context: updated_context, history: updated_history}}
   end
 
   defp run_and_update_context(context, module_name, fun_name) do
@@ -126,94 +129,8 @@ defmodule Worker do
   end
 
   @impl true
-  def terminate(
-        {err, stacktrace} = _reason,
-        %{symbol: symbol, history: history} = state
-      ) do
-    {:ok, worker_leader_pid} = Worker.Leader.get_leader_pid_from_symbol(symbol)
-
-    case {err, stacktrace} do
-      {{:badmatch, {:err, step_output}},
-       [{which_module, which_function, _arity, [file: _filename, line: _line_num]} | _rest]} ->
-        Logger.warn("step error in #{which_module}.#{which_function}: #{step_output}")
-
-        # Don't forget to update failed step into history
-
-        notic_leader_worker_error(%{
-          leader: worker_leader_pid,
-          which_module: Atom.to_string(which_module),
-          which_function: Atom.to_string(which_function),
-          step_output: step_output,
-          worker_state: state,
-          history: history
-        })
-
-      {:undef, [{which_module, which_function, _}]} ->
-        notic_leader_worker_error(%{
-          leader: worker_leader_pid,
-          which_module: Atom.to_string(which_module),
-          which_function: Atom.to_string(which_function),
-          step_output: nil,
-          worker_state: state,
-          history: history
-        })
-
-      {unknow_error,
-       [{which_module, which_function, _arity, [file: _filename, line: _line_num]} | _rest]} ->
-        Logger.debug(
-          "unknow error in #{which_module}.#{which_function}: #{inspect(unknow_error)}"
-        )
-
-        notic_leader_worker_error(%{
-          leader: worker_leader_pid,
-          which_module: Atom.to_string(which_module),
-          which_function: Atom.to_string(which_function),
-          step_output: unknow_error,
-          worker_state: state,
-          history: history
-        })
-
-      {unknow_error, [top_stacktrace | _rest]} ->
-        Logger.debug("unknow error, top stacktrace: #{inspect(unknow_error)}")
-
-        notic_leader_worker_error(%{
-          leader: worker_leader_pid,
-          which_module: "unknow",
-          which_function: "unknow",
-          step_output: "#{inspect(top_stacktrace)}",
-          worker_state: state,
-          history: history
-        })
-    end
-
-    :normal
-  end
-
-  defp notic_leader_worker_error(%{
-         leader: leader_pid,
-         which_module: which_module,
-         which_function: which_function,
-         step_output: stepoutput,
-         worker_state: state,
-         history: current_history
-       }) do
-    send(
-      leader_pid,
-      {:worker_step_error,
-       %{
-         which_module: which_module,
-         which_function: which_function,
-         step_output: "#{inspect(stepoutput)}",
-         worker_pid: self(),
-         worker_state: %{
-           state
-           | history: [
-               {which_module, which_function, "failed", "#{inspect(stepoutput)}"}
-               | current_history
-             ]
-         }
-       }}
-    )
+  def handle_call({:stop}, _from, state) do
+    {:stop, :normal, state}
   end
 
   # @impl true
@@ -233,7 +150,7 @@ defmodule Worker do
       }) do
     GenServer.cast(
       worker_pid,
-      {:run_step,
+      {:run_step_with_id,
        %{
          worker_name: worker_name,
          which_module: which_module,
@@ -251,5 +168,9 @@ defmodule Worker do
   # Helper function to add extra context
   def add_worker_context(worker_pid, new_context) when is_map(new_context) do
     GenServer.call(worker_pid, {:add_new_context, new_context})
+  end
+
+  def stop(worker_pid) do
+    GenServer.call(worker_pid, {:stop})
   end
 end

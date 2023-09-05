@@ -4,31 +4,33 @@ defmodule Steps.Acstor.WorkflowConfig do
   """
 
   def step_may_fail(_context) do
-    n = Enum.random(0..7)
-    Process.sleep(n * 1_000)
+    # n = Enum.random(0..7)
+    # Process.sleep(n * 1_000)
 
     # if n > 5 do
     #   raise "time out"
     # end
 
+    Process.sleep(1_000)
+    raise "time out"
+
     %{}
   end
 
   def dummy_workflow() do
-    1..10
+    1..5
     |> Enum.to_list()
     |> Enum.map(fn _ ->
       {"Steps.Acstor.WorkflowConfig", "step_may_fail"}
     end)
   end
 
-  def simple_replication() do
+  def azure_disk_replication() do
     [
       "az_login_using_sp",
       "az_set_subscription",
       "az_create_resource_group",
       "az_create_aks_cluster",
-      "az_add_node_pool",
       "set_disk_type_to_azure_disk",
       "az_add_node_pool",
       "get_aks_config",
@@ -62,7 +64,8 @@ defmodule Steps.Acstor.WorkflowConfig do
       "big_sleep",
       "label_node_back_with_acstor",
       "big_sleep",
-      "verify_rebuilding_state"
+      "verify_rebuilding_state",
+      "az_delete_rg"
     ]
   end
 end
