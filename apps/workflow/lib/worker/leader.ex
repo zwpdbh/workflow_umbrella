@@ -796,7 +796,7 @@ defmodule Worker.Leader do
       workflows_finished
       |> Enum.find(fn %{workflow_id: id} -> workflow_id == id end)
 
-    k8s_config_file = the_matched_workflow |> Map.get(:kubectl_config)
+    k8s_config_file = the_matched_workflow |> Map.get(:step_context) |> Map.get(:kubectl_config)
 
     if k8s_config_file != nil do
       File.copy(k8s_config_file, Path.join([System.user_home(), ".kube/config"]))
