@@ -69,27 +69,29 @@ defmodule Worker.Collector do
       :ignore ->
         :do_nothing
 
+      # :repaire_worker_and_retry_step ->
+      #   # Useful for keep using one worker's context to test some step, like run different steps on terminal.
+      #   Worker.Leader.repaire_worker_from_step_result(step_result)
+
+      #   # schedule_workflow_for_worker will remove the current workflow from worker and execute a new one on it.
+      #   # The worker still has the previous worker's context and state
+      #   Worker.Leader.schedule_workflow_for_worker(%{
+      #     symbol: symbol,
+      #     worker_name: worker_name,
+      #     schedule_method: :next_workflow
+      #   })
+
+      #   Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
+
       :repaire_worker_and_retry_step ->
-        # Useful for keep using one worker's context to test some step, like run different steps on terminal.
-        Worker.Leader.repaire_worker_from_step_result(step_result)
-
-        # schedule_workflow_for_worker will remove the current workflow from worker and execute a new one on it.
-        # The worker still has the previous worker's context and state
-        Worker.Leader.schedule_workflow_for_worker(%{
-          symbol: symbol,
-          worker_name: worker_name,
-          schedule_method: :next_workflow
-        })
-
-        Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
-
-      :repaire_worker_and_retry_step ->
+        # Do retry use crash worker context
         Worker.Leader.repaire_worker_from_step_result(step_result)
         Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: worker_name})
 
       # Compare with a step succeed: terminate worker, start a new worker.
       # Well, we don't need to terminate worker since it is crashed due to step failure.
       :skip_and_schedule_next_workflow ->
+        # TODO
         nil
 
       unknow_schdule ->

@@ -3,26 +3,51 @@ defmodule Steps.Acstor.WorkflowConfig do
   Based on some configuration to generate different kind of workflows
   """
 
-  def step_may_fail(_context) do
-    # n = Enum.random(0..7)
-    # Process.sleep(n * 1_000)
+  def step_may_fail(%{log_file: log_file} = _context) do
+    timestamp_str = Steps.LogBackend.generate_local_timestamp()
 
-    # if n > 5 do
-    #   raise "time out"
-    # end
+    Steps.LogBackend.log_to_file(%{
+      log_file: log_file,
+      content: "#{timestamp_str} -- execute step_may_fail"
+    })
 
-    Process.sleep(1_000)
-    raise "time out"
+    n = Enum.random(0..7)
+    Process.sleep(n * 100)
+
+    if n > 3 do
+      raise "time out"
+    end
+
+    %{}
+  end
+
+  def step_may_fail_and_retry(%{log_file: log_file} = _context) do
+    timestamp_str = Steps.LogBackend.generate_local_timestamp()
+
+    Steps.LogBackend.log_to_file(%{
+      log_file: log_file,
+      content: "#{timestamp_str} -- execute step_may_fail_and_retry"
+    })
+
+    n = Enum.random(0..7)
+    Process.sleep(n * 100)
+
+    if n > 3 do
+      raise "time out"
+    end
 
     %{}
   end
 
   def dummy_workflow() do
-    1..5
-    |> Enum.to_list()
-    |> Enum.map(fn _ ->
+    [
+      {"Steps.Acstor.WorkflowConfig", "step_may_fail_and_retry"},
+      {"Steps.Acstor.WorkflowConfig", "step_may_fail"},
+      {"Steps.Acstor.WorkflowConfig", "step_may_fail_and_retry"},
+      {"Steps.Acstor.WorkflowConfig", "step_may_fail"},
+      {"Steps.Acstor.WorkflowConfig", "step_may_fail_and_retry"},
       {"Steps.Acstor.WorkflowConfig", "step_may_fail"}
-    end)
+    ]
   end
 
   def azure_disk_replication() do
@@ -67,5 +92,18 @@ defmodule Steps.Acstor.WorkflowConfig do
       "verify_rebuilding_state",
       "az_delete_rg"
     ]
+  end
+
+  def retry_policy(function_name) do
+    retry? =
+      ["kubectl", "may_fail"]
+      |> Enum.any?(fn x -> String.contains?(function_name, x) end)
+
+    # if we find some function_name should retry, we specify its maximum retry count
+    if retry? do
+      2
+    else
+      0
+    end
   end
 end
