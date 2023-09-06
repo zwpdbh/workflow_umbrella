@@ -104,7 +104,7 @@ defmodule Steps.Acstor.WorkflowConfig do
 
   def retry_policy(function_name) do
     retry? =
-      ["kubectl", "and_retry"]
+      (["kubectl", "and_retry"] ++ azure_disk_replication())
       |> Enum.any?(fn x -> String.contains?(function_name, x) end)
 
     # if we find some function_name should retry, we specify its maximum retry count

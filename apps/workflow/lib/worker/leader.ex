@@ -133,6 +133,17 @@ defmodule Worker.Leader do
     )
   end
 
+  defp fresh_worker_state_with_step_context(settings, step_context) do
+    struct(
+      Worker.State,
+      Map.put_new(
+        settings,
+        :step_context,
+        step_context
+      )
+    )
+  end
+
   defp process_failed_step_result(%{err: err, top_stacktrace: top_stacktrace} = _step_result) do
     case %{err: err, top_stacktrace: top_stacktrace} do
       %{
@@ -170,6 +181,19 @@ defmodule Worker.Leader do
     #     SymbolSupervisor.get_dynamic_worker_supervisor(symbol),
     #     {Worker, state}
     #   )
+  end
+
+  defp start_one_fresh_worker_with_step_context(%{
+         symbol_setting: symbol_setting,
+         step_context: step_context
+       }) do
+    %{step_context: %{suffix: suffix}} =
+      worker_state = fresh_worker_state_with_step_context(symbol_setting, step_context)
+
+    new_worker_name = "worker_#{suffix}"
+    new_worker_state = Map.put(worker_state, :name, new_worker_name)
+
+    new_worker_state |> start_new_worker_with_state()
   end
 
   defp start_one_fresh_worker(%{
@@ -714,6 +738,56 @@ defmodule Worker.Leader do
 
   @impl true
   def handle_call(
+        {:resume_workflow, failed_workflow_id},
+        _from,
+        %{
+          symbol: symbol,
+          workflows_finished: workflows_finished,
+          worker_registry: worker_registry,
+          workflows_in_progress: workflows_in_progress
+        } = state
+      ) do
+    failed_workflow =
+      workflows_finished
+      |> Enum.find(fn %{workflow_id: workflow_id} -> workflow_id == failed_workflow_id end)
+
+    if failed_workflow == nil do
+      {:reply, {:err, "There is no failed workflow: #{failed_workflow_id} for symbol: #{symbol}"},
+       state}
+    else
+      # 1) create a worker from the failed workflow's context
+      symbol_setting = fetch_symbol_settings(symbol)
+
+      %{
+        worker_name: new_worker_name,
+        worker_pid: new_worker_pid
+      } =
+        start_one_fresh_worker_with_step_context(%{
+          symbol_setting: symbol_setting,
+          step_context: failed_workflow.step_context
+        })
+
+      updated_worker_registry = Map.put(worker_registry, new_worker_name, new_worker_pid)
+
+      updated_workflows_in_progress =
+        Map.put(workflows_in_progress, new_worker_name, failed_workflow)
+
+      updated_workflows_finished =
+        workflows_finished
+        |> Enum.reject(fn %{workflow_id: workflow_id} -> workflow_id == failed_workflow_id end)
+
+      {:reply, {:ok, failed_workflow_id},
+       %{
+         state
+         | workflows_in_progress: updated_workflows_in_progress,
+           worker_registry: updated_worker_registry,
+           workflows_finished: updated_workflows_finished
+       }}
+    end
+  end
+
+  @impl true
+  def handle_call(
         {:overrite_k8s_config_to_defaul_from_workflow_id, workflow_id},
         _from,
         %{workflows_finished: workflows_finished} = state
@@ -932,6 +1006,13 @@ defmodule Worker.Leader do
     GenServer.call(
       :"#{__MODULE__}_#{symbol}",
       {:cleanup_worker_from_step_result, result}
+    )
+  end
+
+  def resume_workflow(%{symbol: symbol, workflow_id: workflow_id}) do
+    GenServer.call(
+      :"#{__MODULE__}_#{symbol}",
+      {:resume_workflow, workflow_id}
     )
   end
 
