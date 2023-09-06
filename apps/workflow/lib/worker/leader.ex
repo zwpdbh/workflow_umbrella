@@ -713,6 +713,27 @@ defmodule Worker.Leader do
   end
 
   @impl true
+  def handle_call(
+        {:overrite_k8s_config_to_defaul_from_workflow_id, workflow_id},
+        _from,
+        %{workflows_finished: workflows_finished} = state
+      ) do
+    the_matched_workflow =
+      workflows_finished
+      |> Enum.find(fn %{workflow_id: id} -> workflow_id == id end)
+
+    k8s_config_file = the_matched_workflow |> Map.get(:kubectl_config)
+
+    if k8s_config_file != nil do
+      File.copy(k8s_config_file, Path.join([System.user_home(), ".kube/config"]))
+      {:reply, {:ok, k8s_config_file}, state}
+    else
+      {:reply, {:err, "couldn't find :kubectl_config in workflow: #{workflow_id}'s step_context"},
+       state}
+    end
+  end
+
+  @impl true
   def handle_cast(
         {:execute_workflow_for_worker, worker_name},
         %{
@@ -914,11 +935,10 @@ defmodule Worker.Leader do
     )
   end
 
-  # def repaire_worker_and_retry_step(%{symbol: symbol} = result, retry_remained)
-  #     when is_integer(retry_remained) do
-  #   GenServer.call(
-  #     :"#{__MODULE__}_#{symbol}",
-  #     {:repaire_worker_and_retry_step, result, retry_remained}
-  #   )
-  # end
+  def overrite_k8s_config_to_defaul_from_workflow_id(%{symbol: symbol, workflow_id: workflow_id}) do
+    GenServer.call(
+      :"#{__MODULE__}_#{symbol}",
+      {:overrite_k8s_config_to_defaul_from_workflow_id, workflow_id}
+    )
+  end
 end
