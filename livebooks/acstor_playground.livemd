@@ -115,7 +115,12 @@ end)
 ```
 
 ```elixir
-Leader.resume_workflow(%{symbol: symbol, workflow_id: "65e8a39c-9da3-4f2c-9f31-1e7aee1f2156"})
+failed_workflow =
+  Leader.current_state(symbol)
+  |> Map.get(:workflows_finished)
+  |> Enum.find(fn x -> String.contains?(x.log_file, "nb8hqv") end)
+
+Leader.resume_workflow(%{symbol: symbol, workflow_id: failed_workflow.workflow_id})
 ```
 
 ```elixir
@@ -128,7 +133,9 @@ Leader.overrite_k8s_config_to_defaul_from_workflow_id(%{
 ```elixir
 Leader.current_state(symbol)
 |> Map.get(:workflows_finished)
-|> Enum.find(fn %{workflow_id: id} -> id == "65e8a39c-9da3-4f2c-9f31-1e7aee1f2156" end)
+|> Enum.map(fn x ->
+  %{workflow_id: x.workflow_id, log_file: x.log_file, aks: x.step_context.aks}
+end)
 ```
 
 <!-- livebook:{"branch_parent_index":1} -->

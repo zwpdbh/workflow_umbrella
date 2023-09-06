@@ -394,7 +394,7 @@ defmodule Steps.Acstor.Replication do
           ])
 
         "san" ->
-          raise "SAN is not supported yet".
+          raise "SAN is not supported yet"
       end
 
     storage_pool_settings =
