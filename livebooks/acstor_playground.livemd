@@ -43,7 +43,7 @@ alias Worker.Leader
 alias Steps.Acstor.WorkflowConfig
 
 Workflow.stop_scenario(symbol)
-# Workflow.start_scenario(symbol)
+Workflow.start_scenario(symbol)
 ```
 
 <!-- livebook:{"branch_parent_index":1} -->

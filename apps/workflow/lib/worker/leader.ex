@@ -23,7 +23,8 @@ defmodule Worker.Leader do
     defstruct workflow_id: "",
               steps: [],
               workflow_status: "todo",
-              log_file: ""
+              log_file: "",
+              step_context: %{}
   end
 
   defmodule WorkflowStepState do
@@ -469,7 +470,9 @@ defmodule Worker.Leader do
 
   @impl true
   def handle_call(
-        {:worker_step_succeed, %{worker_name: worker_name, worker_pid: worker_pid} = step_result},
+        {:worker_step_succeed,
+         %{worker_name: worker_name, worker_pid: worker_pid, step_context: step_context} =
+           step_result},
         _from,
         %{
           worker_registry: worker_registry,
@@ -502,6 +505,10 @@ defmodule Worker.Leader do
       )
 
       updated_state = put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+
+      updated_state =
+        put_in(updated_state, [:workflows_in_progress, worker_name, :step_context], step_context)
+
       # update workflow status
       updated_state =
         put_in(
@@ -526,7 +533,8 @@ defmodule Worker.Leader do
         {:worker_step_failed,
          %{
            worker_name: worker_name,
-           worker_pid: worker_pid
+           worker_pid: worker_pid,
+           worker_state: %{step_context: step_context} = _crashed_worker_state
          } = _step_result},
         _from,
         %{
@@ -558,6 +566,9 @@ defmodule Worker.Leader do
       # update the workflow steps
       maximum_retry = Steps.Acstor.WorkflowConfig.retry_policy(which_function)
 
+      updated_state =
+        put_in(state, [:workflows_in_progress, worker_name, :step_context], step_context)
+
       # Retry logic is implemented in this callback for handling step failure.
       case retry_count < maximum_retry do
         true ->
@@ -574,7 +585,7 @@ defmodule Worker.Leader do
 
           # We only updated the step status for the failed step.
           updated_state =
-            put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+            put_in(updated_state, [:workflows_in_progress, worker_name, :steps], updated_steps)
 
           updated_state =
             put_in(
@@ -599,7 +610,7 @@ defmodule Worker.Leader do
 
           # We only updated the step status for the failed step.
           updated_state =
-            put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+            put_in(updated_state, [:workflows_in_progress, worker_name, :steps], updated_steps)
 
           # update workflow status
           updated_state =
