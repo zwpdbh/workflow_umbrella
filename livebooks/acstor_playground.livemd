@@ -158,14 +158,16 @@ workflow_definitions =
   1..1
   |> Enum.to_list()
   |> Enum.map(fn _ ->
-    WorkflowConfig.dummy_workflow()
+    WorkflowConfig.dummy_workflow_for_testing_skip_failed()
   end)
 
 Leader.add_workflows_for_symbol(%{
   symbol: symbol,
   workflows_definition: workflow_definitions
 })
+```
 
+```elixir
 Leader.schedule_workflows(symbol)
 ```
 
@@ -175,6 +177,16 @@ Leader.execute_workflows_for_symbol(symbol)
 
 ```elixir
 leader_state = Leader.current_state(symbol)
+```
+
+```elixir
+leader_state = Leader.current_state(symbol)
+leader_state |> Map.get(:workflows_todo) |> length
+```
+
+```elixir
+leader_state = Leader.current_state(symbol)
+leader_state |> Map.get(:workflows_finished) |> length
 ```
 
 ```elixir

@@ -22,7 +22,7 @@ defmodule Worker.Leader do
 
     defstruct workflow_id: "",
               steps: [],
-              workflow_status: "",
+              workflow_status: "todo",
               log_file: ""
   end
 
@@ -189,9 +189,29 @@ defmodule Worker.Leader do
     end)
   end
 
-  defp all_steps_succeed(steps) do
-    steps
-    |> Enum.all?(fn %{step_status: status} -> status == "succeed" end)
+  defp decide_workflow_status_from_steps(steps) do
+    all_todo? =
+      steps
+      |> Enum.all?(fn %{step_status: status} -> status == "todo" end)
+
+    all_succeed? =
+      steps
+      |> Enum.all?(fn %{step_status: status} -> status == "succeed" end)
+
+    any_failed? =
+      steps
+      |> Enum.any?(fn %{step_status: status} -> status == "failed" end)
+
+    # any_in_progress? =
+    #   steps
+    #   |> Enum.any?(fn %{step_status: status} -> status == "in_progress" end)
+
+    case {all_succeed?, any_failed?, all_todo?} do
+      {true, _, _} -> "succeed"
+      {_, true, _} -> "failed"
+      {_, _, true} -> "todo"
+      _ -> "in_progress"
+    end
   end
 
   defp run_next_step_for_worker(worker_name, steps, %{worker_registry: worker_registry} = state) do
@@ -377,53 +397,51 @@ defmodule Worker.Leader do
           updated_workflows_in_progress =
             Map.put(workflows_in_progress, worker_name, scheduled_workflow)
 
-          {:reply, scheduled_workflow,
+          {:reply, {:ok, scheduled_workflow},
            %{state | workflows_in_progress: updated_workflows_in_progress, workflows_todo: rest}}
         end
 
       {%{steps: steps}, []} ->
-        Logger.info("There is no more workflows to be executed for worker: #{worker_name}")
-        updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, nil)
+        if decide_workflow_status_from_steps(steps) == "todo" do
+          {:reply, {:ok, current_workflow}, state}
+        else
+          Logger.info("There is no more workflows to be executed for worker: #{worker_name}")
+          updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, nil)
 
-        workflow_status =
-          if all_steps_succeed(steps) do
-            "succeed"
-          else
-            "failed"
-          end
+          workflow_status = decide_workflow_status_from_steps(steps)
 
-        updated_workflows_finished = [
-          Map.put(current_workflow, :workflow_status, workflow_status) | workflows_finished
-        ]
+          updated_workflows_finished = [
+            Map.put(current_workflow, :workflow_status, workflow_status) | workflows_finished
+          ]
 
-        {:reply, {:err, "no more workflows in todo"},
-         %{
-           state
-           | workflows_in_progress: updated_workflows_in_progress,
-             workflows_finished: updated_workflows_finished
-         }}
+          {:reply, {:err, "no more workflows in todo"},
+           %{
+             state
+             | workflows_in_progress: updated_workflows_in_progress,
+               workflows_finished: updated_workflows_finished
+           }}
+        end
 
       {%{steps: steps}, [head | rest]} ->
-        updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, head)
+        if decide_workflow_status_from_steps(steps) == "todo" do
+          {:reply, {:ok, current_workflow}, state}
+        else
+          updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, head)
 
-        workflow_status =
-          if all_steps_succeed(steps) do
-            "succeed"
-          else
-            "failed"
-          end
+          workflow_status = decide_workflow_status_from_steps(steps)
 
-        updated_workflows_finished = [
-          Map.put(current_workflow, :workflow_status, workflow_status) | workflows_finished
-        ]
+          updated_workflows_finished = [
+            Map.put(current_workflow, :workflow_status, workflow_status) | workflows_finished
+          ]
 
-        {:reply, {:ok, head},
-         %{
-           state
-           | workflows_in_progress: updated_workflows_in_progress,
-             workflows_finished: updated_workflows_finished,
-             workflows_todo: rest
-         }}
+          {:reply, {:ok, head},
+           %{
+             state
+             | workflows_in_progress: updated_workflows_in_progress,
+               workflows_finished: updated_workflows_finished,
+               workflows_todo: rest
+           }}
+        end
     end
   end
 
@@ -484,6 +502,13 @@ defmodule Worker.Leader do
       )
 
       updated_state = put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+      # update workflow status
+      updated_state =
+        put_in(
+          updated_state,
+          [:workflows_in_progress, worker_name, :workflow_status],
+          decide_workflow_status_from_steps(updated_steps)
+        )
 
       case find_next_step(updated_steps) do
         nil ->
@@ -533,6 +558,7 @@ defmodule Worker.Leader do
       # update the workflow steps
       maximum_retry = Steps.Acstor.WorkflowConfig.retry_policy(which_function)
 
+      # Retry logic is implemented in this callback for handling step failure.
       case retry_count < maximum_retry do
         true ->
           Logger.info(
@@ -549,6 +575,13 @@ defmodule Worker.Leader do
           # We only updated the step status for the failed step.
           updated_state =
             put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+
+          updated_state =
+            put_in(
+              updated_state,
+              [:workflows_in_progress, worker_name, :workflow_status],
+              "in_retry"
+            )
 
           {:reply, :repaire_worker_and_retry_step, updated_state}
 
@@ -567,6 +600,14 @@ defmodule Worker.Leader do
           # We only updated the step status for the failed step.
           updated_state =
             put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+
+          # update workflow status
+          updated_state =
+            put_in(
+              updated_state,
+              [:workflows_in_progress, worker_name, :workflow_status],
+              decide_workflow_status_from_steps(updated_steps)
+            )
 
           {:reply, :skip_and_schedule_next_workflow, updated_state}
       end
@@ -610,7 +651,53 @@ defmodule Worker.Leader do
       updated_worker_registry = Map.put(worker_registry, new_worker_name, new_worker_pid)
       updated_state = put_in(state, [:worker_registry], updated_worker_registry)
 
-      {:reply, :repaire_worker_and_schedule_next_workflow, updated_state}
+      {:reply, :ok, updated_state}
+    end
+  end
+
+  # cleanup_worker_from_step_result is different from repaire_worker_from_step_result such that:
+  # In repaire_worker_from_step_result, a new worker is started.
+  # In cleanup_worker_from_step_result, we
+  # 1) delete not valid worker_name <-> worker_pid registry (the worker is crashed)
+  # 2) move workflows_in_progress into finished (don't need to update the step caused worker crash because we did it in worker_step_failed callback)
+  # 3) delete workflows_in_progress related with crashed_worker_name
+  @impl true
+  def handle_call(
+        {:cleanup_worker_from_step_result,
+         %{worker_name: worker_name, worker_pid: worker_pid} = _step_result},
+        _from,
+        %{
+          worker_registry: worker_registry,
+          workflows_in_progress: workflows_in_progress,
+          workflows_finished: workflows_finished
+        } = state
+      ) do
+    registered_worker_pid = Map.get(worker_registry, worker_name)
+
+    if worker_pid != registered_worker_pid do
+      Logger.warn(
+        "#{__MODULE__} repaire_worker_and_retry_step for unknow worker: #{inspect(Map.get(worker_registry, worker_name))}, ignored. The current worker_registry is #{inspect(worker_registry)}"
+      )
+
+      {:reply, :ignore, state}
+    else
+      # 1) delete not valid worker_name <-> worker_pid registry (the worker is crashed)
+      updated_worker_registry = Map.delete(worker_registry, worker_name)
+      # 2) move workflows_in_progress into finished
+      updated_workflows_finished = [
+        Map.get(workflows_in_progress, worker_name) | workflows_finished
+      ]
+
+      # 3) delete workflows_in_progress related with crashed_worker_name
+      updated_workflows_in_progress = Map.delete(workflows_in_progress, worker_name)
+
+      {:reply, :ok,
+       %{
+         state
+         | worker_registry: updated_worker_registry,
+           workflows_in_progress: updated_workflows_in_progress,
+           workflows_finished: updated_workflows_finished
+       }}
     end
   end
 
@@ -806,6 +893,13 @@ defmodule Worker.Leader do
     GenServer.call(
       :"#{__MODULE__}_#{symbol}",
       {:repaire_worker_from_step_result, result}
+    )
+  end
+
+  def cleanup_worker_from_step_result(%{symbol: symbol} = result) do
+    GenServer.call(
+      :"#{__MODULE__}_#{symbol}",
+      {:cleanup_worker_from_step_result, result}
     )
   end
 

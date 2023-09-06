@@ -39,13 +39,21 @@ defmodule Steps.Acstor.WorkflowConfig do
     %{}
   end
 
-  def dummy_workflow() do
+  def dummy_workflow_for_testing_retry() do
     [
       {"Steps.Acstor.WorkflowConfig", "step_may_fail_and_retry"},
       {"Steps.Acstor.WorkflowConfig", "step_may_fail"},
       {"Steps.Acstor.WorkflowConfig", "step_may_fail_and_retry"},
       {"Steps.Acstor.WorkflowConfig", "step_may_fail"},
       {"Steps.Acstor.WorkflowConfig", "step_may_fail_and_retry"},
+      {"Steps.Acstor.WorkflowConfig", "step_may_fail"}
+    ]
+  end
+
+  def dummy_workflow_for_testing_skip_failed() do
+    [
+      {"Steps.Acstor.WorkflowConfig", "step_may_fail"},
+      {"Steps.Acstor.WorkflowConfig", "step_may_fail"},
       {"Steps.Acstor.WorkflowConfig", "step_may_fail"}
     ]
   end
@@ -96,7 +104,7 @@ defmodule Steps.Acstor.WorkflowConfig do
 
   def retry_policy(function_name) do
     retry? =
-      ["kubectl", "may_fail"]
+      ["kubectl", "and_retry"]
       |> Enum.any?(fn x -> String.contains?(function_name, x) end)
 
     # if we find some function_name should retry, we specify its maximum retry count
