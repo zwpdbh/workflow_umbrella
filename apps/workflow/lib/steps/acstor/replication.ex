@@ -380,7 +380,11 @@ defmodule Steps.Acstor.Replication do
     storage_pool_yaml_template =
       case disk_type do
         "nvme" ->
-          ""
+          Path.join([
+            File.cwd!(),
+            "apps/workflow/lib/steps/acstor/storage_pool",
+            "nvme_disk.yml"
+          ])
 
         "azure_disk" ->
           Path.join([
@@ -390,7 +394,7 @@ defmodule Steps.Acstor.Replication do
           ])
 
         "san" ->
-          ""
+          raise "SAN is not supported yet".
       end
 
     storage_pool_settings =

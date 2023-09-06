@@ -62,10 +62,17 @@ azure_disk_workflow_definition =
     {"Steps.Acstor.Replication", function_name}
   end)
 
+nvme_workflow_definition =
+  WorkflowConfig.nvme_replication()
+  |> Enum.map(fn function_name ->
+    {"Steps.Acstor.Replication", function_name}
+  end)
+
 Leader.add_workflows_for_symbol(%{
   symbol: symbol,
   workflows_definition: [
-    azure_disk_workflow_definition
+    # azure_disk_workflow_definition,
+    nvme_workflow_definition
   ]
 })
 ```
