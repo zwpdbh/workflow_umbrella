@@ -71,7 +71,7 @@ nvme_workflow_definition =
 Leader.add_workflows_for_symbol(%{
   symbol: symbol,
   workflows_definition: [
-    # azure_disk_workflow_definition,
+    azure_disk_workflow_definition,
     nvme_workflow_definition
   ]
 })
