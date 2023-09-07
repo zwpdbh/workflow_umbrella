@@ -86,6 +86,16 @@ Leader.execute_workflows_for_symbol(symbol)
 ```
 
 ```elixir
+# RESUME workflow
+failed_workflow =
+  Leader.current_state(symbol)
+  |> Map.get(:workflows_finished)
+  |> Enum.find(fn x -> String.contains?(x.log_file, "6eqypt") end)
+
+Leader.resume_workflow(%{symbol: symbol, workflow_id: failed_workflow.workflow_id})
+```
+
+```elixir
 Leader.current_state(symbol)
 # |> Map.get(:workflows_finished)
 # |> Enum.map(fn x -> {x.workflow_id, x.workflow_status} end)
@@ -112,15 +122,6 @@ Leader.current_state(symbol)
 end)
 
 # |> Enum.map(fn x -> {x.workflow_id, x.workflow_status} end)
-```
-
-```elixir
-failed_workflow =
-  Leader.current_state(symbol)
-  |> Map.get(:workflows_finished)
-  |> Enum.find(fn x -> String.contains?(x.log_file, "6eqypt") end)
-
-Leader.resume_workflow(%{symbol: symbol, workflow_id: failed_workflow.workflow_id})
 ```
 
 ```elixir

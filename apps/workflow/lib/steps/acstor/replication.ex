@@ -1021,7 +1021,7 @@ defmodule Steps.Acstor.Replication do
       |> Map.merge(context)
       |> Exec.run()
 
-    if not (replica_num - 1) == output |> String.trim() |> String.to_integer() do
+    if replica_num - 1 != output |> String.trim() |> String.to_integer() do
       raise "after unlabel, the number of node with acstor label is not decreased"
     end
 
@@ -1033,7 +1033,7 @@ defmodule Steps.Acstor.Replication do
       |> Map.merge(context)
       |> Exec.run()
 
-    if not (replica_num - 1) == output |> String.trim() |> String.to_integer() do
+    if replica_num - 1 != output |> String.trim() |> String.to_integer() do
       raise "after unlabel, the number of pod is not decreased"
     end
 
