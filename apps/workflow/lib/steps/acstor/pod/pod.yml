@@ -1,0 +1,20 @@
+kind: Pod 
+apiVersion: v1 
+metadata: 
+  name: <%= pod_name %>
+spec: 
+  volumes: 
+    - name: ms-volume 
+      persistentVolumeClaim: 
+        claimName: <%= pvc_name %>
+  containers: 
+    - name: <%= pod_name %> 
+      image: acrldi.azurecr.io/acstor-test 
+      args: 
+        - sleep 
+        - "1000000" 
+      volumeMounts: 
+        - mountPath: "/volume" 
+          name: ms-volume 
+  nodeSelector: 
+    targetNode: <%= node_label %> 

@@ -19,9 +19,12 @@ iex(myapp@localhost)1> Node.self
 ```sh
 docker run \
 --network=host \
+-e RELEASE_NODE=workflow_umbrella \
 -e LIVEBOOK_DISTRIBUTION=name \
 -e LIVEBOOK_COOKIE=some_token \
 -e LIVEBOOK_NODE=livebook@localhost \
+-e LIVEBOOK_PORT=8003 \
+-e LIVEBOOK_IFRAME_PORT=8004 \
 -u $(id -u):$(id -g) \
 -v $(pwd):/data \
 ghcr.io/livebook-dev/livebook:0.8.1
@@ -32,7 +35,7 @@ ghcr.io/livebook-dev/livebook:0.8.1
 - If succeed, it should oupt something like:
 
   ```sh
-  [Livebook] Application running at http://0.0.0.0:8080/?token=gwc234cmrxsfnqkaeeu6hv7wjhg3qe2g
+  [Livebook] Application running at http://0.0.0.0:8003/?token=gwc234cmrxsfnqkaeeu6hv7wjhg3qe2g
   ```
 
 ### Connect to the node from Livebook

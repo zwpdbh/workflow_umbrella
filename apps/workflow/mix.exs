@@ -42,7 +42,12 @@ defmodule Workflow.MixProject do
       {:jason, "~> 1.2"},
       {:swoosh, "~> 1.3"},
       {:finch, "~> 0.13"},
-      {:playground, in_umbrella: true}
+      {:uuid, "~> 1.1"},
+      {:httpoison, "~> 2.0"},
+      {:tzdata, "~> 1.1"},
+      {:timex, "~> 3.0"},
+      {:playground, in_umbrella: true},
+      {:accessible, "~> 0.3.0"}
     ]
   end
 
