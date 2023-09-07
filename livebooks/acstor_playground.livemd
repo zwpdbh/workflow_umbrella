@@ -252,7 +252,9 @@ end)
 ```
 
 ```elixir
-:infinite > 0
+%{a: 1, b: 2, c: nil}
+|> Enum.filter(fn {_k, v} -> v == nil end)
+|> length()
 ```
 
 ## Backup Info

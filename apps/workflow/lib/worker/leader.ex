@@ -38,6 +38,11 @@ defmodule Worker.Leader do
               retry_count: 0
   end
 
+  defmodule SymbolSetting do
+    use Accessible
+    defstruct n_workers: 2
+  end
+
   def start_link(symbol) do
     GenServer.start_link(__MODULE__, symbol, name: :"#{__MODULE__}_#{symbol}")
   end
