@@ -44,7 +44,7 @@ defmodule Steps.Exec do
     # also record the command we executed into log file
     Steps.LogBackend.log_to_file(%{
       log_file: log_file,
-      content: "#{timestamp_str}\n$#{cmd_str}"
+      content: "\n#{timestamp_str}\n$#{cmd_str}"
     })
 
     {output, status} =
