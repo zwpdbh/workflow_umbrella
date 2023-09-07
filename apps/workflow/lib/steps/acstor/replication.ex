@@ -721,7 +721,7 @@ defmodule Steps.Acstor.Replication do
     %{pod_name: pod_name} = pod_node_registry |> Enum.random()
 
     fio_cmd = """
-    kubectl exec -it #{pod_name} -- fio \
+    kubectl exec #{pod_name} -- fio \
     --name=benchtest --size=2g \
     --filename=/volume/test \
     --direct=1 --rw=randrw --rwmixread=30 \
@@ -795,9 +795,31 @@ defmodule Steps.Acstor.Replication do
 
   def get_replication_info(
         %{
-          acstor_api_host_port: host_port
+          kubectl_config: kubectl_config,
+          acstor_api_value: acstor_api_value
         } = context
       ) do
+    host_port = 9092
+
+    Task.start(fn ->
+      %{
+        cmd: "lsof -i :#{host_port} | awk 'NR!=1 {print $2}' | xargs kill"
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+      {:ok, _output} =
+        %{
+          cmd: "kubectl port-forward #{acstor_api_value} -n acstor #{host_port}:8081 &",
+          env: [{"KUBECONFIG", kubectl_config}]
+        }
+        |> Map.merge(context)
+        |> Exec.run()
+    end)
+
+    # We don't want to await the task becasue we still need to wait its effect
+    Process.sleep(3_000)
+
     {:ok, cmd_output} =
       %{
         cmd: "curl 'http://127.0.0.1:#{host_port}/v0/volumes?max_entries=1'"
