@@ -9,8 +9,15 @@ defmodule WorkflowWeb.ClusterLive do
   defmodule Index do
     use WorkflowWeb, :live_component
 
-    def init(context) do
-      context
+    def mount(_params, _session, socket) do
+      # socket = assign(socket, key: value)
+      {:ok, socket}
+    end
+
+    def render(assigns) do
+      ~H"""
+      <div class="hero"><%= @content %></div>
+      """
     end
   end
 end
