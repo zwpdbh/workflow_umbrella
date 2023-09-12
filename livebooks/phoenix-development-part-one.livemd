@@ -1,0 +1,34 @@
+# Full-stack development in phoenix -- Part one
+
+## Introduction
+
+As we could execute multiple scenarios(symbols) with multiple workflows for each one (POC finished). It is neccessary to implement the frontend part to better track and display their results.
+
+The goal of frontend is:
+
+* Start/Stop scenarios(symbols)
+* Add/remove workers from symbol.
+* User submit workflow definition.
+* Run multiple workfows from workflow definition.
+* Track workflows status.
+* Track steps status.
+
+## Others
+
+### [Phoenix.Component](https://hexdocs.pm/phoenix_live_view/Phoenix.Component.html#content)
+
+* It defines reusable function component with HEEX templates.
+* What is `function component` ? 
+  It is any function that receives an assigns map as an argument and returns a rendered struct built with `~H` sigil.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### [Phoenix.LiveComponent](https://hexdocs.pm/phoenix_live_view/Phoenix.LiveComponent.html)
+
+* It is used in a parent LiveView.
+* It hass its own state and [life-cycle](https://hexdocs.pm/phoenix_live_view/Phoenix.LiveComponent.html#module-summary).
+* It is "stateful component" comparing with `Phoenix.Component` is stateless component.
+
+<!-- livebook:{"break_markdown":true} -->
+
+###
