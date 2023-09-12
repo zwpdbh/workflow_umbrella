@@ -3,7 +3,7 @@
 ## Local Dev 
 ### Start Mix project with naming node
 ```sh 
-iex --name myapp@localhost --cookie some_token -S mix
+iex --name myapp@localhost --cookie some_token -S mix phx.server
 Erlang/OTP 25 [erts-13.2] [source] [64-bit] [smp:24:24] [ds:24:24:10] [async-threads:1] [jit:ns]
 
 Interactive Elixir (1.14.3) - press Ctrl+C to exit (type h() ENTER for help)

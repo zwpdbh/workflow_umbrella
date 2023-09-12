@@ -13,6 +13,12 @@ The goal of frontend is:
 * Track workflows status.
 * Track steps status.
 
+## Features for manage clusters
+
+* [ ] A table show all living clusters (like a index page)
+* [ ] start a cluster (in the cluster's detail page)
+* [ ] stop a cluster (in the cluster's detail page)
+
 ## Others
 
 ### [Phoenix.Component](https://hexdocs.pm/phoenix_live_view/Phoenix.Component.html#content)

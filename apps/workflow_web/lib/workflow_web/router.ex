@@ -1,5 +1,8 @@
 defmodule WorkflowWeb.Router do
   use WorkflowWeb, :router
+  import Phoenix.LiveView.Router
+
+  alias WorkflowWeb.Live.ClusterLive
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -15,9 +18,14 @@ defmodule WorkflowWeb.Router do
   end
 
   scope "/", WorkflowWeb do
-    pipe_through :browser
+    pipe_through(:browser)
 
     get "/", PageController, :home
+  end
+
+  scope "/live", WorkflowWeb do
+    pipe_through(:browser)
+    get "/clusters", ClusterLive.Index, :index
   end
 
   # Other scopes may use custom stacks.
@@ -35,9 +43,9 @@ defmodule WorkflowWeb.Router do
     import Phoenix.LiveDashboard.Router
 
     scope "/dev" do
-      pipe_through :browser
+      pipe_through(:browser)
 
-      live_dashboard "/dashboard", metrics: WorkflowWeb.Telemetry
+      live_dashboard("/dashboard", metrics: WorkflowWeb.Telemetry)
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
   end
