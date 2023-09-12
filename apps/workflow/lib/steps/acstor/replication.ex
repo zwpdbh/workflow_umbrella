@@ -380,7 +380,11 @@ defmodule Steps.Acstor.Replication do
     storage_pool_yaml_template =
       case disk_type do
         "nvme" ->
-          ""
+          Path.join([
+            File.cwd!(),
+            "apps/workflow/lib/steps/acstor/storage_pool",
+            "nvme_disk.yml"
+          ])
 
         "azure_disk" ->
           Path.join([
@@ -390,7 +394,7 @@ defmodule Steps.Acstor.Replication do
           ])
 
         "san" ->
-          ""
+          raise "SAN is not supported yet"
       end
 
     storage_pool_settings =
@@ -717,7 +721,7 @@ defmodule Steps.Acstor.Replication do
     %{pod_name: pod_name} = pod_node_registry |> Enum.random()
 
     fio_cmd = """
-    kubectl exec -it #{pod_name} -- fio \
+    kubectl exec #{pod_name} -- fio \
     --name=benchtest --size=2g \
     --filename=/volume/test \
     --direct=1 --rw=randrw --rwmixread=30 \
@@ -791,9 +795,31 @@ defmodule Steps.Acstor.Replication do
 
   def get_replication_info(
         %{
-          acstor_api_host_port: host_port
+          kubectl_config: kubectl_config,
+          acstor_api_value: acstor_api_value
         } = context
       ) do
+    host_port = 9092
+
+    Task.start(fn ->
+      %{
+        cmd: "lsof -i :#{host_port} | awk 'NR!=1 {print $2}' | xargs kill"
+      }
+      |> Map.merge(context)
+      |> Exec.run()
+
+      {:ok, _output} =
+        %{
+          cmd: "kubectl port-forward #{acstor_api_value} -n acstor #{host_port}:8081 &",
+          env: [{"KUBECONFIG", kubectl_config}]
+        }
+        |> Map.merge(context)
+        |> Exec.run()
+    end)
+
+    # We don't want to await the task becasue we still need to wait its effect
+    Process.sleep(3_000)
+
     {:ok, cmd_output} =
       %{
         cmd: "curl 'http://127.0.0.1:#{host_port}/v0/volumes?max_entries=1'"
@@ -995,7 +1021,7 @@ defmodule Steps.Acstor.Replication do
       |> Map.merge(context)
       |> Exec.run()
 
-    if not (replica_num - 1) == output |> String.trim() |> String.to_integer() do
+    if replica_num - 1 != output |> String.trim() |> String.to_integer() do
       raise "after unlabel, the number of node with acstor label is not decreased"
     end
 
@@ -1007,7 +1033,7 @@ defmodule Steps.Acstor.Replication do
       |> Map.merge(context)
       |> Exec.run()
 
-    if not (replica_num - 1) == output |> String.trim() |> String.to_integer() do
+    if replica_num - 1 != output |> String.trim() |> String.to_integer() do
       raise "after unlabel, the number of pod is not decreased"
     end
 

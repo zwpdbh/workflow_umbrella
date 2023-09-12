@@ -1,0 +1,108 @@
+# Full-stack development in phoenix -- Part one
+
+## Introduction
+
+As we could execute multiple scenarios(symbols) with multiple workflows for each one (POC finished). It is neccessary to implement the frontend part to better track and display their results.
+
+The goal of frontend is:
+
+* Start/Stop scenarios(symbols)
+* Add/remove workers from symbol.
+* User submit workflow definition.
+* Run multiple workfows from workflow definition.
+* Track workflows status.
+* Track steps status.
+
+## Features for manage clusters
+
+* [ ] A table show all living clusters (like a index page)
+* [ ] start a cluster (in the cluster's detail page)
+* [ ] stop a cluster (in the cluster's detail page)
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Setup LiveView page for cluster
+
+<!-- livebook:{"break_markdown":true} -->
+
+Edit `apps/workflow_web/lib/workflow_web/router.ex`
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+# add an extra scope for all live
+scope "/live", WorkflowWeb do
+  pipe_through(:browser)
+  live("/clusters", ClusterLive, :index)
+end
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+Create
+
+* apps/workflow_web/lib/workflow_web/live/cluster_live.ex
+* apps/workflow_web/lib/workflow_web/live/cluster_live.html.heex
+
+<!-- livebook:{"break_markdown":true} -->
+
+Inside `cluster_live.ex` define the functions
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+defmodule WorkflowWeb.Live.ClusterLive do
+  use WorkflowWeb, :live_view
+
+  defmodule Index do
+    use WorkflowWeb, :live_component
+    def mount(_params, _session, socket) do
+      # socket = assign(socket, key: value)
+      {:ok, socket}
+    end
+  end
+end
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Troubleshootings
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### Problem01: UndefinedFunctionError at GET /live/clusters
+
+```
+function WorkflowWeb.ClusterLive.Index.init/1 is undefined or private
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+Solution:
+
+* Where is this `init/` come from? This error happend because I use `get` instead of `live` in the router.
+* After changing to `live("/clusters", ClusterLive, :index)`, the problem got solved.
+
+## Others
+
+### [Phoenix.LiveView](https://hexdocs.pm/phoenix_live_view/Phoenix.LiveView.html)
+
+<!-- livebook:{"break_markdown":true} -->
+
+### [Phoenix.Component](https://hexdocs.pm/phoenix_live_view/Phoenix.Component.html#content)
+
+* It defines reusable function component with HEEX templates.
+* What is `function component` ? 
+  It is any function that receives an assigns map as an argument and returns a rendered struct built with `~H` sigil.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### [Phoenix.LiveComponent](https://hexdocs.pm/phoenix_live_view/Phoenix.LiveComponent.html)
+
+* It is used in a parent LiveView.
+* It hass its own state and [life-cycle](https://hexdocs.pm/phoenix_live_view/Phoenix.LiveComponent.html#module-summary).
+* It is "stateful component" comparing with `Phoenix.Component` is stateless component.
+
+<!-- livebook:{"break_markdown":true} -->
+
+###

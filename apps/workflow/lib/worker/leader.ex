@@ -22,8 +22,9 @@ defmodule Worker.Leader do
 
     defstruct workflow_id: "",
               steps: [],
-              workflow_status: "",
-              log_file: ""
+              workflow_status: "todo",
+              log_file: "",
+              step_context: %{}
   end
 
   defmodule WorkflowStepState do
@@ -35,6 +36,11 @@ defmodule Worker.Leader do
               which_function: "",
               which_module: "",
               retry_count: 0
+  end
+
+  defmodule SymbolSetting do
+    use Accessible
+    defstruct n_workers: 2
   end
 
   def start_link(symbol) do
@@ -132,6 +138,17 @@ defmodule Worker.Leader do
     )
   end
 
+  defp fresh_worker_state_with_step_context(settings, step_context) do
+    struct(
+      Worker.State,
+      Map.put_new(
+        settings,
+        :step_context,
+        step_context
+      )
+    )
+  end
+
   defp process_failed_step_result(%{err: err, top_stacktrace: top_stacktrace} = _step_result) do
     case %{err: err, top_stacktrace: top_stacktrace} do
       %{
@@ -171,6 +188,19 @@ defmodule Worker.Leader do
     #   )
   end
 
+  defp start_one_fresh_worker_with_step_context(%{
+         symbol_setting: symbol_setting,
+         step_context: step_context
+       }) do
+    %{step_context: %{suffix: suffix}} =
+      worker_state = fresh_worker_state_with_step_context(symbol_setting, step_context)
+
+    new_worker_name = "worker_#{suffix}"
+    new_worker_state = Map.put(worker_state, :name, new_worker_name)
+
+    new_worker_state |> start_new_worker_with_state()
+  end
+
   defp start_one_fresh_worker(%{
          symbol_setting: symbol_setting
        }) do
@@ -189,9 +219,29 @@ defmodule Worker.Leader do
     end)
   end
 
-  defp all_steps_succeed(steps) do
-    steps
-    |> Enum.all?(fn %{step_status: status} -> status == "succeed" end)
+  defp decide_workflow_status_from_steps(steps) do
+    all_todo? =
+      steps
+      |> Enum.all?(fn %{step_status: status} -> status == "todo" end)
+
+    all_succeed? =
+      steps
+      |> Enum.all?(fn %{step_status: status} -> status == "succeed" end)
+
+    any_failed? =
+      steps
+      |> Enum.any?(fn %{step_status: status} -> status == "failed" end)
+
+    # any_in_progress? =
+    #   steps
+    #   |> Enum.any?(fn %{step_status: status} -> status == "in_progress" end)
+
+    case {all_succeed?, any_failed?, all_todo?} do
+      {true, _, _} -> "succeed"
+      {_, true, _} -> "failed"
+      {_, _, true} -> "todo"
+      _ -> "in_progress"
+    end
   end
 
   defp run_next_step_for_worker(worker_name, steps, %{worker_registry: worker_registry} = state) do
@@ -377,53 +427,51 @@ defmodule Worker.Leader do
           updated_workflows_in_progress =
             Map.put(workflows_in_progress, worker_name, scheduled_workflow)
 
-          {:reply, scheduled_workflow,
+          {:reply, {:ok, scheduled_workflow},
            %{state | workflows_in_progress: updated_workflows_in_progress, workflows_todo: rest}}
         end
 
       {%{steps: steps}, []} ->
-        Logger.info("There is no more workflows to be executed for worker: #{worker_name}")
-        updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, nil)
+        if decide_workflow_status_from_steps(steps) == "todo" do
+          {:reply, {:ok, current_workflow}, state}
+        else
+          Logger.info("There is no more workflows to be executed for worker: #{worker_name}")
+          updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, nil)
 
-        workflow_status =
-          if all_steps_succeed(steps) do
-            "succeed"
-          else
-            "failed"
-          end
+          workflow_status = decide_workflow_status_from_steps(steps)
 
-        updated_workflows_finished = [
-          Map.put(current_workflow, :workflow_status, workflow_status) | workflows_finished
-        ]
+          updated_workflows_finished = [
+            Map.put(current_workflow, :workflow_status, workflow_status) | workflows_finished
+          ]
 
-        {:reply, {:err, "no more workflows in todo"},
-         %{
-           state
-           | workflows_in_progress: updated_workflows_in_progress,
-             workflows_finished: updated_workflows_finished
-         }}
+          {:reply, {:err, "no more workflows in todo"},
+           %{
+             state
+             | workflows_in_progress: updated_workflows_in_progress,
+               workflows_finished: updated_workflows_finished
+           }}
+        end
 
       {%{steps: steps}, [head | rest]} ->
-        updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, head)
+        if decide_workflow_status_from_steps(steps) == "todo" do
+          {:reply, {:ok, current_workflow}, state}
+        else
+          updated_workflows_in_progress = Map.put(workflows_in_progress, worker_name, head)
 
-        workflow_status =
-          if all_steps_succeed(steps) do
-            "succeed"
-          else
-            "failed"
-          end
+          workflow_status = decide_workflow_status_from_steps(steps)
 
-        updated_workflows_finished = [
-          Map.put(current_workflow, :workflow_status, workflow_status) | workflows_finished
-        ]
+          updated_workflows_finished = [
+            Map.put(current_workflow, :workflow_status, workflow_status) | workflows_finished
+          ]
 
-        {:reply, {:ok, head},
-         %{
-           state
-           | workflows_in_progress: updated_workflows_in_progress,
-             workflows_finished: updated_workflows_finished,
-             workflows_todo: rest
-         }}
+          {:reply, {:ok, head},
+           %{
+             state
+             | workflows_in_progress: updated_workflows_in_progress,
+               workflows_finished: updated_workflows_finished,
+               workflows_todo: rest
+           }}
+        end
     end
   end
 
@@ -451,7 +499,9 @@ defmodule Worker.Leader do
 
   @impl true
   def handle_call(
-        {:worker_step_succeed, %{worker_name: worker_name, worker_pid: worker_pid} = step_result},
+        {:worker_step_succeed,
+         %{worker_name: worker_name, worker_pid: worker_pid, step_context: step_context} =
+           step_result},
         _from,
         %{
           worker_registry: worker_registry,
@@ -485,6 +535,17 @@ defmodule Worker.Leader do
 
       updated_state = put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
 
+      updated_state =
+        put_in(updated_state, [:workflows_in_progress, worker_name, :step_context], step_context)
+
+      # update workflow status
+      updated_state =
+        put_in(
+          updated_state,
+          [:workflows_in_progress, worker_name, :workflow_status],
+          decide_workflow_status_from_steps(updated_steps)
+        )
+
       case find_next_step(updated_steps) do
         nil ->
           # If there is no next step for current workflow, we need to move the workflow into finished one
@@ -501,7 +562,8 @@ defmodule Worker.Leader do
         {:worker_step_failed,
          %{
            worker_name: worker_name,
-           worker_pid: worker_pid
+           worker_pid: worker_pid,
+           worker_state: %{step_context: step_context} = _crashed_worker_state
          } = _step_result},
         _from,
         %{
@@ -533,6 +595,10 @@ defmodule Worker.Leader do
       # update the workflow steps
       maximum_retry = Steps.Acstor.WorkflowConfig.retry_policy(which_function)
 
+      updated_state =
+        put_in(state, [:workflows_in_progress, worker_name, :step_context], step_context)
+
+      # Retry logic is implemented in this callback for handling step failure.
       case retry_count < maximum_retry do
         true ->
           Logger.info(
@@ -548,7 +614,14 @@ defmodule Worker.Leader do
 
           # We only updated the step status for the failed step.
           updated_state =
-            put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+            put_in(updated_state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+
+          updated_state =
+            put_in(
+              updated_state,
+              [:workflows_in_progress, worker_name, :workflow_status],
+              "in_retry"
+            )
 
           {:reply, :repaire_worker_and_retry_step, updated_state}
 
@@ -566,7 +639,15 @@ defmodule Worker.Leader do
 
           # We only updated the step status for the failed step.
           updated_state =
-            put_in(state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+            put_in(updated_state, [:workflows_in_progress, worker_name, :steps], updated_steps)
+
+          # update workflow status
+          updated_state =
+            put_in(
+              updated_state,
+              [:workflows_in_progress, worker_name, :workflow_status],
+              decide_workflow_status_from_steps(updated_steps)
+            )
 
           {:reply, :skip_and_schedule_next_workflow, updated_state}
       end
@@ -610,7 +691,124 @@ defmodule Worker.Leader do
       updated_worker_registry = Map.put(worker_registry, new_worker_name, new_worker_pid)
       updated_state = put_in(state, [:worker_registry], updated_worker_registry)
 
-      {:reply, :repaire_worker_and_schedule_next_workflow, updated_state}
+      {:reply, :ok, updated_state}
+    end
+  end
+
+  # cleanup_worker_from_step_result is different from repaire_worker_from_step_result such that:
+  # In repaire_worker_from_step_result, a new worker is started.
+  # In cleanup_worker_from_step_result, we
+  # 1) delete not valid worker_name <-> worker_pid registry (the worker is crashed)
+  # 2) move workflows_in_progress into finished (don't need to update the step caused worker crash because we did it in worker_step_failed callback)
+  # 3) delete workflows_in_progress related with crashed_worker_name
+  @impl true
+  def handle_call(
+        {:cleanup_worker_from_step_result,
+         %{worker_name: worker_name, worker_pid: worker_pid} = _step_result},
+        _from,
+        %{
+          worker_registry: worker_registry,
+          workflows_in_progress: workflows_in_progress,
+          workflows_finished: workflows_finished
+        } = state
+      ) do
+    registered_worker_pid = Map.get(worker_registry, worker_name)
+
+    if worker_pid != registered_worker_pid do
+      Logger.warn(
+        "#{__MODULE__} repaire_worker_and_retry_step for unknow worker: #{inspect(Map.get(worker_registry, worker_name))}, ignored. The current worker_registry is #{inspect(worker_registry)}"
+      )
+
+      {:reply, :ignore, state}
+    else
+      # 1) delete not valid worker_name <-> worker_pid registry (the worker is crashed)
+      updated_worker_registry = Map.delete(worker_registry, worker_name)
+      # 2) move workflows_in_progress into finished
+      updated_workflows_finished = [
+        Map.get(workflows_in_progress, worker_name) | workflows_finished
+      ]
+
+      # 3) delete workflows_in_progress related with crashed_worker_name
+      updated_workflows_in_progress = Map.delete(workflows_in_progress, worker_name)
+
+      {:reply, :ok,
+       %{
+         state
+         | worker_registry: updated_worker_registry,
+           workflows_in_progress: updated_workflows_in_progress,
+           workflows_finished: updated_workflows_finished
+       }}
+    end
+  end
+
+  @impl true
+  def handle_call(
+        {:resume_workflow, failed_workflow_id},
+        _from,
+        %{
+          symbol: symbol,
+          workflows_finished: workflows_finished,
+          worker_registry: worker_registry,
+          workflows_in_progress: workflows_in_progress
+        } = state
+      ) do
+    failed_workflow =
+      workflows_finished
+      |> Enum.find(fn %{workflow_id: workflow_id} -> workflow_id == failed_workflow_id end)
+
+    if failed_workflow == nil do
+      {:reply, {:err, "There is no failed workflow: #{failed_workflow_id} for symbol: #{symbol}"},
+       state}
+    else
+      # 1) create a worker from the failed workflow's context
+      symbol_setting = fetch_symbol_settings(symbol)
+
+      %{
+        worker_name: new_worker_name,
+        worker_pid: new_worker_pid
+      } =
+        start_one_fresh_worker_with_step_context(%{
+          symbol_setting: symbol_setting,
+          step_context: failed_workflow.step_context
+        })
+
+      updated_worker_registry = Map.put(worker_registry, new_worker_name, new_worker_pid)
+
+      updated_workflows_in_progress =
+        Map.put(workflows_in_progress, new_worker_name, failed_workflow)
+
+      updated_workflows_finished =
+        workflows_finished
+        |> Enum.reject(fn %{workflow_id: workflow_id} -> workflow_id == failed_workflow_id end)
+
+      {:reply, {:ok, failed_workflow_id},
+       %{
+         state
+         | workflows_in_progress: updated_workflows_in_progress,
+           worker_registry: updated_worker_registry,
+           workflows_finished: updated_workflows_finished
+       }}
+    end
+  end
+
+  @impl true
+  def handle_call(
+        {:overrite_k8s_config_to_defaul_from_workflow_id, workflow_id},
+        _from,
+        %{workflows_finished: workflows_finished} = state
+      ) do
+    the_matched_workflow =
+      workflows_finished
+      |> Enum.find(fn %{workflow_id: id} -> workflow_id == id end)
+
+    k8s_config_file = the_matched_workflow |> Map.get(:step_context) |> Map.get(:kubectl_config)
+
+    if k8s_config_file != nil do
+      File.copy(k8s_config_file, Path.join([System.user_home(), ".kube/config"]))
+      {:reply, {:ok, k8s_config_file}, state}
+    else
+      {:reply, {:err, "couldn't find :kubectl_config in workflow: #{workflow_id}'s step_context"},
+       state}
     end
   end
 
@@ -809,11 +1007,24 @@ defmodule Worker.Leader do
     )
   end
 
-  # def repaire_worker_and_retry_step(%{symbol: symbol} = result, retry_remained)
-  #     when is_integer(retry_remained) do
-  #   GenServer.call(
-  #     :"#{__MODULE__}_#{symbol}",
-  #     {:repaire_worker_and_retry_step, result, retry_remained}
-  #   )
-  # end
+  def cleanup_worker_from_step_result(%{symbol: symbol} = result) do
+    GenServer.call(
+      :"#{__MODULE__}_#{symbol}",
+      {:cleanup_worker_from_step_result, result}
+    )
+  end
+
+  def resume_workflow(%{symbol: symbol, workflow_id: workflow_id}) do
+    GenServer.call(
+      :"#{__MODULE__}_#{symbol}",
+      {:resume_workflow, workflow_id}
+    )
+  end
+
+  def overrite_k8s_config_to_defaul_from_workflow_id(%{symbol: symbol, workflow_id: workflow_id}) do
+    GenServer.call(
+      :"#{__MODULE__}_#{symbol}",
+      {:overrite_k8s_config_to_defaul_from_workflow_id, workflow_id}
+    )
+  end
 end

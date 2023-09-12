@@ -79,7 +79,7 @@ defmodule Worker do
     {:noreply, updated_state}
   end
 
-  # Callback almost same from above except this will update its step execution result to Leader
+  # Callback almost same from above except this will update its step execution result to Collector
   @impl true
   def handle_cast(
         {:run_step_with_id,
@@ -90,7 +90,11 @@ defmodule Worker do
            step_index: step_index,
            step_id: _step_id
          }},
-        %State{step_context: context, history: history, symbol: symbol} = state
+        %State{
+          step_context: context,
+          history: history,
+          symbol: symbol
+        } = state
       ) do
     new_context = run_and_update_context(context, which_module, which_function)
     updated_context = Map.merge(context, new_context)
@@ -102,7 +106,8 @@ defmodule Worker do
        symbol: symbol,
        worker_pid: self(),
        worker_name: worker_name,
-       step_index: step_index
+       step_index: step_index,
+       step_context: updated_context
      }})
 
     {:noreply, %{state | step_context: updated_context, history: updated_history}}

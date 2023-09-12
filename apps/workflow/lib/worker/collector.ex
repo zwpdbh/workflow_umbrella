@@ -38,7 +38,7 @@ defmodule Worker.Collector do
         :do_nothing
 
       :schedule_next_workflow ->
-        # (TODO) Based on different symbol, we may want to reuse the worker context or want to use a fresh new worker.
+        # Based on different symbol, we may want to reuse the worker context or want to use a fresh new worker.
         # Here, we just use fresh new worker.
         {:ok, _worker_pid} =
           Worker.Leader.terminate_worker(%{symbol: symbol, worker_name: worker_name})
@@ -91,8 +91,18 @@ defmodule Worker.Collector do
       # Compare with a step succeed: terminate worker, start a new worker.
       # Well, we don't need to terminate worker since it is crashed due to step failure.
       :skip_and_schedule_next_workflow ->
-        # TODO
-        nil
+        # Based on different symbol, we may want to reuse the worker context or want to use a fresh new worker.
+        # Here, we just use fresh new worker.
+        Worker.Leader.cleanup_worker_from_step_result(step_result)
+        %{worker_name: new_worker_name} = Worker.Leader.add_new_worker(symbol)
+
+        Worker.Leader.schedule_workflow_for_worker(%{
+          symbol: symbol,
+          worker_name: new_worker_name,
+          schedule_method: :next_workflow
+        })
+
+        Worker.Leader.execute_workflow_for_worker(%{symbol: symbol, worker_name: new_worker_name})
 
       unknow_schdule ->
         Logger.debug(
