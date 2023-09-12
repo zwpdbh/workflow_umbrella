@@ -3,6 +3,7 @@ defmodule WorkflowWeb.ClusterLive do
 
   def mount(_params, _session, socket) do
     # socket = assign(socket, key: value)
+    socket = assign(socket, clusters: [])
     {:ok, socket}
   end
 
@@ -10,13 +11,13 @@ defmodule WorkflowWeb.ClusterLive do
     use WorkflowWeb, :live_component
 
     def mount(_params, _session, socket) do
-      # socket = assign(socket, key: value)
+      # socket = assign(socket, clusters: [])
       {:ok, socket}
     end
 
     def render(assigns) do
       ~H"""
-      <div class="hero"><%= @content %></div>
+      <div class="clusters-index"><%= @clusters %></div>
       """
     end
   end
