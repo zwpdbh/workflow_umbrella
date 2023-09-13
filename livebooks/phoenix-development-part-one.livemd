@@ -31,7 +31,20 @@ Questions to review
 
 <!-- livebook:{"break_markdown":true} -->
 
-So, the goal of this part is: **Simulate the flow of data wihtout using a database**.
+So, the goal of this part is: **Simulate the flow of data generated from schema wihtout a database**.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Play with [Ecto](https://hexdocs.pm/ecto/Ecto.html#content)
+
+```elixir
+Workflow.Step.new(%{
+  status: :todo,
+  module: "some_module",
+  function: "some_function",
+  retry_count: 0
+})
+```
 
 ## Features for manage clusters
 
