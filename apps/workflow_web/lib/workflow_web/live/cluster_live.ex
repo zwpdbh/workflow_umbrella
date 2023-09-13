@@ -17,7 +17,15 @@ defmodule WorkflowWeb.ClusterLive do
 
     def render(assigns) do
       ~H"""
-      <div class="clusters-index"><%= @clusters %></div>
+      <table>
+        <tbody>
+          <%= for cluster <- @clusters do %>
+          <tr>
+            <td><%= cluster.name %></td>
+          </tr>
+          <% end %>
+        </tbody>
+      </table>
       """
     end
   end

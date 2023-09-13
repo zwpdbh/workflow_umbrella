@@ -13,6 +13,26 @@ The goal of frontend is:
 * Track workflows status.
 * Track steps status.
 
+## Define schema for our data
+
+Currently, the data model is simply defined as struct and their relationship is not well defined.
+I need to use `Ecto.Schema` to formally structure them.
+
+In general, there are two parts:
+
+* The static part for different definitions, such as workflow definition.
+* The runtime part for different instances, such as a workflow instance.
+
+Questions to review
+
+* How about other parts, like the hierarchy of the system? Do I need to store it? 
+  * That graph should be embeded into the model relationship.
+  * It means without actually running the system, we could simulate the system by manipulating the data from our model.
+
+<!-- livebook:{"break_markdown":true} -->
+
+So, the goal of this part is: **Simulate the flow of data wihtout using a database**.
+
 ## Features for manage clusters
 
 * [ ] A table show all living clusters (like a index page)
@@ -83,7 +103,7 @@ Solution:
 * Where is this `init/` come from? This error happend because I use `get` instead of `live` in the router.
 * After changing to `live("/clusters", ClusterLive, :index)`, the problem got solved.
 
-## Others
+## Others -- Phoenix
 
 ### [Phoenix.LiveView](https://hexdocs.pm/phoenix_live_view/Phoenix.LiveView.html)
 
@@ -106,3 +126,26 @@ Solution:
 <!-- livebook:{"break_markdown":true} -->
 
 ###
+
+## Others -- Ecto
+
+### General steps to setup ecto
+
+see: [Setup ecto inside naive app](https://github.com/zwpdbh/hedgehog/blob/dev/from-ms/documents/playground.livemd#setup-ecto-inside-naive-app)
+
+In general
+
+1. Defines the DB and how to talk to it in Elixir application.
+   * Prepare dependencies
+   * Add ecto repo to application
+   * Config ecto repo in application
+   * Setup supervision tree for DB connection.
+2. Create database.
+3. Create the table by migration 
+   * Define migration
+   * Run migration
+4. Create schema to the table to use data from database table.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### [Embedded Schemas](https://hexdocs.pm/ecto/embedded-schemas.html)
