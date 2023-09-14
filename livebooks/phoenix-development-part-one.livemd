@@ -28,10 +28,22 @@ Questions to review
 * How about other parts, like the hierarchy of the system? Do I need to store it? 
   * That graph should be embeded into the model relationship.
   * It means without actually running the system, we could simulate the system by manipulating the data from our model.
+* We could define those most obvious model, and extent the models gradually.
+  * In this case, `WorkflowInstance` is the center.
+
+## Simulate the flow of data by unit tests
+
+At this stage, we igore the actuall running of our system. But focus on building the manipulation of data and its model correctness. In other words, use unit test to simulate the result of different operation to test if we could get expected result from it.
 
 <!-- livebook:{"break_markdown":true} -->
 
-So, the goal of this part is: **Simulate the flow of data generated from schema wihtout a database**.
+### Unit test to cover
+
+Given a workflow definition, we do the following tests
+
+* Save workflow definition.
+* Create a workflow instance and save it.
+* After saving some data into DB successfully, we use it.
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -42,7 +54,15 @@ Workflow.Step.new(%{
   status: :todo,
   module: "some_module",
   function: "some_function",
-  retry_count: 0
+  index: 2
+})
+```
+
+```elixir
+WorkflowContext.StepContext.create_step(%{
+  status: :todo,
+  module: "some_module",
+  function: "some_function"
 })
 ```
 
