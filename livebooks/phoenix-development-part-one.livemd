@@ -71,19 +71,27 @@ Given a workflow definition, we do the following tests
 ### Play with [Ecto](https://hexdocs.pm/ecto/Ecto.html#content)
 
 ```elixir
-Workflow.Step.new(%{
-  status: :todo,
-  module: "some_module",
-  function: "some_function",
-  index: 2
-})
-```
+# Create a workflow defintion 
+alias Workflow.WorkflowDefinition
 
-```elixir
-WorkflowContext.StepContext.create_step(%{
-  status: :todo,
-  module: "some_module",
-  function: "some_function"
+[
+  %{
+    module_name: "module01",
+    function_name: "function01"
+  },
+  %{
+    module_name: "module02",
+    function_name: "function01"
+  },
+  %{
+    module_name: "module02",
+    function_name: "function02"
+  }
+]
+|> WorkflowDefinition.convert_steps()
+|> WorkflowDefinition.create_workflow_definition_with_steps(%{
+  name: "workflow01",
+  description: "workflow poc to test"
 })
 ```
 
