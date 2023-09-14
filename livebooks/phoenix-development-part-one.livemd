@@ -71,7 +71,6 @@ Given a workflow definition, we do the following tests
 ### Play with [Ecto](https://hexdocs.pm/ecto/Ecto.html#content)
 
 ```elixir
-# Create a workflow defintion 
 alias Workflow.WorkflowDefinition
 
 [
@@ -89,11 +88,17 @@ alias Workflow.WorkflowDefinition
   }
 ]
 |> WorkflowDefinition.convert_steps()
-|> WorkflowDefinition.create_workflow_definition_with_steps(%{
+|> WorkflowDefinition.play(%{
   name: "workflow01",
   description: "workflow poc to test"
 })
 ```
+
+### Troubleshootings
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### "inserted_at" of relation "workflow_definitions" violates not-null constraint
 
 ## Features for manage clusters
 

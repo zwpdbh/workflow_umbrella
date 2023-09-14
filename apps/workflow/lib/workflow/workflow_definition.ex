@@ -18,7 +18,8 @@ defmodule Workflow.WorkflowDefinition do
     |> Ecto.Changeset.validate_required(@required_fields)
   end
 
-  def convert_steps(steps) do
+  # Create a list of  Workflow.Step by converting raw workflow_defintion which is list of steps (map).
+  def convert_steps(steps) when is_list(steps) do
     steps
     |> Enum.with_index()
     |> Enum.map(fn {each, index} ->
@@ -29,16 +30,23 @@ defmodule Workflow.WorkflowDefinition do
     end)
   end
 
+  # Create Workflow.WorkflowDefinition
   def create_workflow_definition_with_steps(steps, attrs \\ %{}) do
-    valid_steps = convert_steps(steps)
+    workflow_definition_changeset =
+      %__MODULE__{}
+      |> changeset(attrs)
+      |> Ecto.Changeset.put_assoc(:workflow_steps, steps)
 
+    if workflow_definition_changeset.valid? do
+      {:ok, Ecto.Changeset.apply_changes(workflow_definition_changeset)}
+    else
+      {:err, workflow_definition_changeset.errors}
+    end
+  end
+
+  def insert_workflow_definition(workflow_definition) do
     Repo.transaction(fn ->
-      workflow_definition_changeset =
-        %__MODULE__{}
-        |> changeset(attrs)
-        |> Ecto.Changeset.put_embed(:workflow_steps, valid_steps)
-
-      case Repo.insert(workflow_definition_changeset) do
+      case Repo.insert(workflow_definition) do
         {:ok, workflow_definition} ->
           {:ok, workflow_definition}
 
@@ -46,5 +54,11 @@ defmodule Workflow.WorkflowDefinition do
           {:error, changeset}
       end
     end)
+  end
+
+  def play(steps, attrs \\ %{}) do
+    {:ok, workflow_definition} = create_workflow_definition_with_steps(steps, attrs)
+
+    insert_workflow_definition(workflow_definition)
   end
 end
