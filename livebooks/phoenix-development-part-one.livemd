@@ -31,6 +31,27 @@ Questions to review
 * We could define those most obvious model, and extent the models gradually.
   * In this case, `WorkflowInstance` is the center.
 
+<!-- livebook:{"break_markdown":true} -->
+
+### Steps for init DB
+
+Run `docker-compose up -d`, and cd into `workflow_umbrella/apps/workflow` folder:
+
+* Create init script: `mix ecto.gen.migration init`
+* Edit the generated `xxx.exs` file.
+* Run `mix ecto.migrate` to do the table migration.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Clean up DB
+
+Inside `workflow_umbrella/apps/workflow` folder:
+
+* Option 1: `mix ecto.rollback`
+* Option 2: 
+  * `mix ecto.drop`
+  * `mix ecto.create`
+
 ## Simulate the flow of data by unit tests
 
 At this stage, we igore the actuall running of our system. But focus on building the manipulation of data and its model correctness. In other words, use unit test to simulate the result of different operation to test if we could get expected result from it.
