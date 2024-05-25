@@ -19,8 +19,8 @@ defmodule Workflow.Application do
       {
         DynamicSupervisor,
         strategy: :one_for_one, name: DynamicSymbolSupervisor
-      },
-      Azure.Auth
+      }
+      # Azure.Auth
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: WorkflowApp.Supervisor)

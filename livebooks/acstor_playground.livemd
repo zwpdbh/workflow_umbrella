@@ -46,6 +46,10 @@ Workflow.stop_scenario(symbol)
 Workflow.start_scenario(symbol)
 ```
 
+```elixir
+Workflow.start_scenario("another_workload")
+```
+
 <!-- livebook:{"branch_parent_index":1} -->
 
 ## Execute replication workflow
